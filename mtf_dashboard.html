@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MTF RSI CONFLUENCE — SCALP DASHBOARD</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #07080d;
+    --bg2:       #0d0f18;
+    --bg3:       #12141f;
+    --panel:     #0f1120;
+    --border:    #1e2235;
+    --green:     #00e87a;
+    --green-dim: #00e87a22;
+    --red:       #ff3d5a;
+    --red-dim:   #ff3d5a22;
+    --amber:     #ffb800;
+    --amber-dim: #ffb80022;
+    --blue:      #4d9fff;
+    --blue-dim:  #4d9fff18;
+    --muted:     #3a3f5c;
+    --text:      #c8cde8;
+    --text-dim:  #5a6080;
+    --font-head: 'Orbitron', monospace;
+    --font-data: 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-data);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    border: 2px solid var(--green);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    box-shadow: 0 0 12px var(--green-dim);
+  }
+
+  .logo-icon::after {
+    content: '';
+    width: 14px; height: 14px;
+    background: var(--green);
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    animation: pulse-icon 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-icon {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .logo h1 {
+    font-family: var(--font-head);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #fff;
+  }
+
+  .logo span {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    display: block;
+    margin-top: 2px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--green);
+    font-family: var(--font-head);
+  }
+
+  .live-dot {
+    width: 7px; height: 7px;
+    background: var(--green);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--green);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .clock {
+    font-size: 13px;
+    color: var(--text);
+    letter-spacing: 1px;
+  }
+
+  .pair-select {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-head);
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  /* ── MAIN GRID ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 320px;
+    grid-template-rows: auto auto auto;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 73px);
+  }
+
+  .panel {
+    background: var(--panel);
+    padding: 20px;
+  }
+
+  .panel-title {
+    font-family: var(--font-head);
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .panel-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── RSI GAUGES ── */
+  .rsi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+
+  .rsi-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 12px;
+    text-align: center;
+    position: relative;
+    transition: border-color 0.4s, box-shadow 0.4s;
+  }
+
+  .rsi-card.oversold {
+    border-color: var(--green);
+    box-shadow: 0 0 20px var(--green-dim);
+  }
+
+  .rsi-card.overbought {
+    border-color: var(--red);
+    box-shadow: 0 0 20px var(--red-dim);
+  }
+
+  .rsi-tf {
+    font-family: var(--font-head);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+
+  .gauge-wrap {
+    position: relative;
+    width: 90px;
+    height: 50px;
+    margin: 0 auto 12px;
+    overflow: hidden;
+  }
+
+  .gauge-wrap svg {
+    width: 90px;
+    height: 90px;
+    position: absolute;
+    top: 0; left: 0;
+  }
+
+  .gauge-track {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 7;
+    stroke-dasharray: 141.4;
+    stroke-dashoffset: 0;
+    stroke-linecap: round;
+  }
+
+  .gauge-fill {
+    fill: none;
+    stroke-width: 7;
+    stroke-dasharray: 141.4;
+    stroke-linecap: round;
+    transform-origin: 45px 45px;
+    transform: rotate(-180deg);
+    transition: stroke-dashoffset 0.8s cubic-bezier(0.4,0,0.2,1), stroke 0.4s;
+  }
+
+  .rsi-val {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1;
+    transition: color 0.4s;
+  }
+
+  .rsi-signal {
+    font-size: 9px;
+    letter-spacing: 2px;
+    margin-top: 5px;
+    font-family: var(--font-head);
+  }
+
+  .rsi-signal.os { color: var(--green); }
+  .rsi-signal.ob { color: var(--red); }
+  .rsi-signal.neutral { color: var(--text-dim); }
+
+  /* ── SIGNAL PANEL ── */
+  .signal-display {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .signal-box {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 28px;
+    text-align: center;
+    background: var(--bg2);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.5s;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .signal-box.long {
+    border-color: var(--green);
+    box-shadow: inset 0 0 60px var(--green-dim), 0 0 30px var(--green-dim);
+  }
+
+  .signal-box.short {
+    border-color: var(--red);
+    box-shadow: inset 0 0 60px var(--red-dim), 0 0 30px var(--red-dim);
+  }
+
+  .signal-box.wait {
+    border-color: var(--muted);
+  }
+
+  .signal-label {
+    font-family: var(--font-head);
+    font-size: 9px;
+    letter-spacing: 4px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  .signal-text {
+    font-family: var(--font-head);
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    transition: color 0.4s;
+  }
+
+  .signal-text.long { color: var(--green); text-shadow: 0 0 30px var(--green); }
+  .signal-text.short { color: var(--red); text-shadow: 0 0 30px var(--red); }
+  .signal-text.wait { color: var(--text-dim); }
+
+  .signal-tier {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--amber);
+    margin-top: 8px;
+    font-family: var(--font-head);
+  }
+
+  .confluence-bar {
+    display: flex;
+    gap: 6px;
+    margin-top: 14px;
+    justify-content: center;
+  }
+
+  .conf-dot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: all 0.4s;
+  }
+
+  .conf-dot.active.long { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .conf-dot.active.short { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+  /* ── TRADE LEVELS ── */
+  .levels-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .level-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+  }
+
+  .level-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    font-family: var(--font-head);
+    margin-bottom: 6px;
+  }
+
+  .level-value {
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: 1px;
+  }
+
+  .level-value.entry { color: var(--blue); }
+  .level-value.sl { color: var(--red); }
+  .level-value.tp { color: var(--green); }
+  .level-value.rr { color: var(--amber); }
+
+  /* ── EXIT MONITOR ── */
+  .exit-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .exit-row:last-child { border-bottom: none; }
+
+  .exit-key { color: var(--text-dim); letter-spacing: 1px; }
+  .exit-val { font-weight: 500; }
+
+  .exit-status {
+    margin-top: 14px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-family: var(--font-head);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-align: center;
+    transition: all 0.4s;
+  }
+
+  .exit-status.hold {
+    background: var(--amber-dim);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+  }
+
+  .exit-status.close {
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    color: var(--red);
+    animation: flash 0.8s ease-in-out infinite;
+  }
+
+  @keyframes flash { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* ── SESSION PANEL ── */
+  .sessions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .session-card {
+    flex: 1;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+    transition: all 0.4s;
+  }
+
+  .session-card.active {
+    border-color: var(--green);
+    box-shadow: 0 0 14px var(--green-dim);
+  }
+
+  .session-card.avoid {
+    border-color: var(--red);
+    opacity: 0.6;
+  }
+
+  .session-name {
+    font-family: var(--font-head);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .session-time {
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .session-badge {
+    font-size: 8px;
+    letter-spacing: 1px;
+    margin-top: 5px;
+    font-family: var(--font-head);
+  }
+
+  .session-card.active .session-badge { color: var(--green); }
+  .session-card.avoid .session-badge { color: var(--red); }
+  .session-card .session-badge { color: var(--text-dim); }
+
+  /* ── SIGNAL LOG ── */
+  .log-panel {
+    grid-column: 3;
+    grid-row: 1 / 4;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .log-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: calc(100vh - 120px);
+  }
+
+  .log-list::-webkit-scrollbar { width: 3px; }
+  .log-list::-webkit-scrollbar-track { background: transparent; }
+  .log-list::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+
+  .log-entry {
+    background: var(--bg2);
+    border-left: 3px solid var(--muted);
+    padding: 10px 12px;
+    border-radius: 0 4px 4px 0;
+    animation: slide-in 0.3s ease;
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(10px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .log-entry.long { border-left-color: var(--green); }
+  .log-entry.short { border-left-color: var(--red); }
+  .log-entry.exit { border-left-color: var(--amber); }
+  .log-entry.info { border-left-color: var(--blue); }
+
+  .log-time {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-bottom: 3px;
+    letter-spacing: 1px;
+  }
+
+  .log-msg {
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.4;
+  }
+
+  /* ── ATR GAUGE ── */
+  .atr-bar-wrap {
+    margin-top: 10px;
+  }
+
+  .atr-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 5px;
+  }
+
+  .atr-bar-track {
+    width: 100%;
+    height: 5px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .atr-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--amber));
+    transition: width 0.8s ease;
+  }
+
+  /* ── CANDLE DIRECTION ── */
+  .candle-strip {
+    display: flex;
+    gap: 3px;
+    align-items: flex-end;
+    height: 36px;
+    margin-top: 10px;
+  }
+
+  .candle-bar {
+    width: 6px;
+    border-radius: 1px;
+    flex-shrink: 0;
+    transition: height 0.4s ease, background 0.4s;
+  }
+
+  /* ── SPAN HELPERS ── */
+  .span-2 { grid-column: span 2; }
+  .full-row { grid-column: 1 / 3; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+    .log-panel { grid-column: 1 / 3; grid-row: auto; }
+    .log-list { max-height: 260px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div>
+      <h1>MTF RSI CONFLUENCE</h1>
+      <span>SCALP SIGNAL DASHBOARD v2.0</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <select class="pair-select" id="pairSelect" onchange="changePair()">
+      <option value="EURUSD">EUR/USD</option>
+      <option value="GBPUSD">GBP/USD</option>
+      <option value="USDJPY">USD/JPY</option>
+      <option value="XAUUSD">XAU/USD</option>
+    </select>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      SIMULATED LIVE
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- MAIN GRID -->
+<div class="grid">
+
+  <!-- RSI PANEL (spans 2 cols) -->
+  <div class="panel full-row" style="grid-row:1">
+    <div class="panel-title">MULTI-TIMEFRAME RSI MATRIX — 5 TIMEFRAME SCAN</div>
+    <div class="rsi-grid" id="rsiGrid">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+
+  <!-- SIGNAL -->
+  <div class="panel" style="grid-row:2">
+    <div class="panel-title">ENTRY SIGNAL</div>
+    <div class="signal-box wait" id="signalBox">
+      <div class="signal-label">CONFLUENCE VERDICT</div>
+      <div class="signal-text wait" id="signalText">WAIT</div>
+      <div class="signal-tier" id="signalTier">— NO SETUP DETECTED —</div>
+      <div class="confluence-bar" id="confBar">
+        <div class="conf-dot" id="cd0"></div>
+        <div class="conf-dot" id="cd1"></div>
+        <div class="conf-dot" id="cd2"></div>
+        <div class="conf-dot" id="cd3"></div>
+        <div class="conf-dot" id="cd4"></div>
+      </div>
+    </div>
+
+    <!-- Candle preview -->
+    <div style="margin-top:16px;">
+      <div class="panel-title">RECENT 1M CANDLES</div>
+      <div class="candle-strip" id="candleStrip"></div>
+    </div>
+  </div>
+
+  <!-- TRADE LEVELS -->
+  <div class="panel" style="grid-row:2">
+    <div class="panel-title">TRADE LEVELS</div>
+    <div class="levels-grid">
+      <div class="level-card">
+        <div class="level-label">ENTRY PRICE</div>
+        <div class="level-value entry" id="lvlEntry">—</div>
+      </div>
+      <div class="level-card">
+        <div class="level-label">STOP LOSS (2.5× ATR)</div>
+        <div class="level-value sl" id="lvlSL">—</div>
+      </div>
+      <div class="level-card">
+        <div class="level-label">TAKE PROFIT (1× ATR 5M)</div>
+        <div class="level-value tp" id="lvlTP">—</div>
+      </div>
+      <div class="level-card">
+        <div class="level-label">RISK : REWARD</div>
+        <div class="level-value rr" id="lvlRR">—</div>
+      </div>
+    </div>
+
+    <!-- ATR bar -->
+    <div class="atr-bar-wrap" style="margin-top:16px;">
+      <div class="atr-bar-label">
+        <span>ATR VOLATILITY</span>
+        <span id="atrVal">—</span>
+      </div>
+      <div class="atr-bar-track">
+        <div class="atr-bar-fill" id="atrBarFill" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXIT MONITOR -->
+  <div class="panel" style="grid-row:3">
+    <div class="panel-title">EXIT MONITOR — 1H EMA20 + ATR BUFFER</div>
+    <div class="exit-row">
+      <span class="exit-key">LAST CLOSE</span>
+      <span class="exit-val" id="exitClose">—</span>
+    </div>
+    <div class="exit-row">
+      <span class="exit-key">1H EMA20</span>
+      <span class="exit-val" id="exitEma">—</span>
+    </div>
+    <div class="exit-row">
+      <span class="exit-key">ATR THRESHOLD</span>
+      <span class="exit-val" id="exitAtr">—</span>
+    </div>
+    <div class="exit-row">
+      <span class="exit-key">EMA DISTANCE</span>
+      <span class="exit-val" id="exitDist">—</span>
+    </div>
+    <div class="exit-row">
+      <span class="exit-key">EXIT ORDER TYPE</span>
+      <span class="exit-val" style="color:var(--amber)">MARKET ORDER</span>
+    </div>
+    <div class="exit-status hold" id="exitStatus">⏸ HOLD POSITION</div>
+  </div>
+
+  <!-- SESSION TRACKER -->
+  <div class="panel" style="grid-row:3">
+    <div class="panel-title">SESSION TRACKER</div>
+    <div class="sessions" id="sessionCards">
+      <!-- Injected -->
+    </div>
+    <div style="margin-top:14px; padding:10px; background:var(--bg2); border-radius:6px; border:1px solid var(--border); font-size:11px; color:var(--text-dim); line-height:1.6;">
+      <span style="color:var(--green); font-family:var(--font-head); font-size:9px; letter-spacing:2px;">BEST SCALP WINDOW:</span><br>
+      London Open 03:00–05:00 EST<br>
+      NY Open 08:00–10:00 EST<br>
+      Overlap 08:00–12:00 EST
+    </div>
+  </div>
+
+  <!-- SIGNAL LOG -->
+  <div class="panel log-panel">
+    <div class="panel-title">SIGNAL LOG</div>
+    <div class="log-list" id="logList"></div>
+  </div>
+
+</div>
+
+<script>
+// ── STATE
+const TFS = ['1M','5M','15M','1H','4H'];
+const PAIRS = {
+  EURUSD: { price: 1.0842, atr: 0.00045, spread: 0.3 },
+  GBPUSD: { price: 1.2710, atr: 0.00070, spread: 0.5 },
+  USDJPY: { price: 154.32, atr: 0.08,    spread: 0.4 },
+  XAUUSD: { price: 2318.5, atr: 1.80,    spread: 1.2 },
+};
+
+let currentPair = 'EURUSD';
+let rsiValues   = {};
+let tradeOpen   = false;
+let tradeDir    = null;
+let entryPrice  = null;
+let stopLoss    = null;
+let takeProfit  = null;
+let candleData  = [];
+
+// ── INIT RSI GRID
+function initRsiGrid() {
+  const grid = document.getElementById('rsiGrid');
+  grid.innerHTML = TFS.map(tf => `
+    <div class="rsi-card" id="card_${tf}">
+      <div class="rsi-tf">${tf}</div>
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 90 90">
+          <path class="gauge-track"
+            d="M 10 70 A 35 35 0 0 1 80 70"
+            stroke-linecap="round"/>
+          <path class="gauge-fill" id="gfill_${tf}"
+            d="M 10 70 A 35 35 0 0 1 80 70"
+            stroke="${tf === '1M' || tf === '5M' ? '#4d9fff' : '#00e87a'}"
+            stroke-dashoffset="141.4"/>
+        </svg>
+      </div>
+      <div class="rsi-val" id="rval_${tf}">—</div>
+      <div class="rsi-signal neutral" id="rsig_${tf}">NEUTRAL</div>
+    </div>
+  `).join('');
+}
+
+// ── UPDATE GAUGE
+function updateGauge(tf, value) {
+  const fill  = document.getElementById(`gfill_${tf}`);
+  const val   = document.getElementById(`rval_${tf}`);
+  const sig   = document.getElementById(`rsig_${tf}`);
+  const card  = document.getElementById(`card_${tf}`);
+  const arc   = 141.4;
+  const offset = arc - (value / 100) * arc;
+
+  let color, sigClass, sigText;
+  if (value <= 28) {
+    color = 'var(--green)'; sigClass = 'os'; sigText = 'OVERSOLD';
+    card.className = 'rsi-card oversold';
+  } else if (value >= 72) {
+    color = 'var(--red)'; sigClass = 'ob'; sigText = 'OVERBOUGHT';
+    card.className = 'rsi-card overbought';
+  } else {
+    color = tf === '1M' || tf === '5M' ? 'var(--blue)' : 'var(--muted)';
+    sigClass = 'neutral'; sigText = 'NEUTRAL';
+    card.className = 'rsi-card';
+  }
+
+  fill.style.strokeDashoffset = offset;
+  fill.style.stroke = color;
+  val.textContent = value.toFixed(1);
+  val.style.color = color;
+  sig.textContent = sigText;
+  sig.className = `rsi-signal ${sigClass}`;
+}
+
+// ── GENERATE SIMULATED RSI
+function simRsi(bias) {
+  // bias: 'oversold' | 'overbought' | 'neutral'
+  const vals = {};
+  TFS.forEach((tf, i) => {
+    let base;
+    if (bias === 'oversold')   base = 22 + Math.random() * 16;   // 22–38
+    else if (bias === 'overbought') base = 66 + Math.random() * 16;
+    else                       base = 38 + Math.random() * 26;    // 38–64
+    // Add slight noise per TF
+    vals[tf] = Math.max(5, Math.min(95, base + (Math.random() - 0.5) * 10));
+  });
+  return vals;
+}
+
+// ── COUNT CONFLUENCE
+function countConfluence(rsiv, direction) {
+  const threshold = direction === 'long' ? v => v <= 30 : v => v >= 70;
+  return Object.values(rsiv).filter(threshold).length;
+}
+
+// ── UPDATE SIGNAL BOX
+function updateSignal(direction, confluenceCount) {
+  const box  = document.getElementById('signalBox');
+  const text = document.getElementById('signalText');
+  const tier = document.getElementById('signalTier');
+  const dots = [0,1,2,3,4].map(i => document.getElementById(`cd${i}`));
+
+  dots.forEach((d, i) => {
+    d.className = `conf-dot${i < confluenceCount ? ` active ${direction}` : ''}`;
+  });
+
+  if (direction === 'long') {
+    box.className = 'signal-box long';
+    text.className = 'signal-text long';
+    text.textContent = 'LONG ▲';
+    tier.textContent = confluenceCount >= 4 ? '⭐ TIER 1 — HIGH CONVICTION' :
+                       confluenceCount >= 3 ? '⭐ TIER 2 — STRONG SETUP' : '⚡ TIER 3 — MODERATE';
+  } else if (direction === 'short') {
+    box.className = 'signal-box short';
+    text.className = 'signal-text short';
+    text.textContent = 'SHORT ▼';
+    tier.textContent = confluenceCount >= 4 ? '⭐ TIER 1 — HIGH CONVICTION' :
+                       confluenceCount >= 3 ? '⭐ TIER 2 — STRONG SETUP' : '⚡ TIER 3 — MODERATE';
+  } else {
+    box.className = 'signal-box wait';
+    text.className = 'signal-text wait';
+    text.textContent = 'WAIT';
+    tier.textContent = '— NO SETUP DETECTED —';
+  }
+}
+
+// ── UPDATE LEVELS
+function updateLevels(dir) {
+  const pair = PAIRS[currentPair];
+  const price = pair.price + (Math.random() - 0.5) * pair.atr;
+  const atr   = pair.atr;
+  const sl    = dir === 'long' ? price - atr * 2.5 : price + atr * 2.5;
+  const tp    = dir === 'long' ? price + atr       : price - atr;
+  const dp    = currentPair === 'USDJPY' ? 3 : currentPair === 'XAUUSD' ? 2 : 5;
+
+  entryPrice = price; stopLoss = sl; takeProfit = tp; tradeDir = dir;
+
+  document.getElementById('lvlEntry').textContent = price.toFixed(dp);
+  document.getElementById('lvlSL').textContent    = sl.toFixed(dp);
+  document.getElementById('lvlTP').textContent    = tp.toFixed(dp);
+  document.getElementById('lvlRR').textContent    = '1 : 2.5';
+  document.getElementById('atrVal').textContent   = atr.toFixed(dp);
+  document.getElementById('atrBarFill').style.width = `${Math.min(100, atr / 0.001 * 40)}%`;
+}
+
+// ── UPDATE EXIT MONITOR
+function updateExit() {
+  if (!entryPrice) return;
+  const pair = PAIRS[currentPair];
+  const dp   = currentPair === 'USDJPY' ? 3 : currentPair === 'XAUUSD' ? 2 : 5;
+  const close = entryPrice + (Math.random() - 0.5) * pair.atr * 2;
+  const ema   = entryPrice - pair.atr * 0.3;
+  const atrTh = pair.atr;
+  const dist  = Math.abs(close - ema);
+  const exitNow = tradeDir === 'long' ? close < ema - atrTh : close > ema + atrTh;
+
+  document.getElementById('exitClose').textContent = close.toFixed(dp);
+  document.getElementById('exitEma').textContent   = ema.toFixed(dp);
+  document.getElementById('exitAtr').textContent   = atrTh.toFixed(dp);
+  document.getElementById('exitDist').textContent  = dist.toFixed(dp);
+
+  const status = document.getElementById('exitStatus');
+  if (exitNow) {
+    status.className = 'exit-status close';
+    status.textContent = '🔴 MARKET CLOSE — EXIT NOW';
+  } else {
+    status.className = 'exit-status hold';
+    status.textContent = '⏸ HOLD POSITION';
+  }
+}
+
+// ── CANDLE STRIP
+function updateCandles() {
+  const strip = document.getElementById('candleStrip');
+  if (candleData.length === 0) {
+    for (let i = 0; i < 20; i++) {
+      candleData.push({ bull: Math.random() > 0.5, h: 6 + Math.random() * 24 });
+    }
+  } else {
+    candleData.shift();
+    candleData.push({ bull: Math.random() > 0.5, h: 6 + Math.random() * 24 });
+  }
+  strip.innerHTML = candleData.map(c =>
+    `<div class="candle-bar" style="height:${c.h}px;background:${c.bull ? 'var(--green)' : 'var(--red)'};opacity:${0.4 + c.h / 36}"></div>`
+  ).join('');
+}
+
+// ── SESSION TRACKER
+function updateSessions() {
+  const now = new Date();
+  const h   = now.getUTCHours();
+  const sessions = [
+    { name:'LONDON',  time:'03–05 EST', active: h>=8  && h<=10, avoid: false,  utc:'08–10 UTC' },
+    { name:'NY OPEN', time:'08–10 EST', active: h>=13 && h<=15, avoid: false,  utc:'13–15 UTC' },
+    { name:'OVERLAP', time:'08–12 EST', active: h>=13 && h<=17, avoid: false,  utc:'13–17 UTC' },
+    { name:'ASIAN',   time:'20–00 EST', active: false,           avoid: h>=0 && h<=8, utc:'00–08 UTC' },
+  ];
+  document.getElementById('sessionCards').innerHTML = sessions.map(s => `
+    <div class="session-card ${s.active ? 'active' : s.avoid ? 'avoid' : ''}">
+      <div class="session-name">${s.name}</div>
+      <div class="session-time">${s.utc}</div>
+      <div class="session-badge">${s.active ? '✅ ACTIVE' : s.avoid ? '❌ AVOID' : '○ WAITING'}</div>
+    </div>
+  `).join('');
+}
+
+// ── LOG
+function addLog(msg, type = 'info') {
+  const list  = document.getElementById('logList');
+  const now   = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  entry.innerHTML = `<div class="log-time">${now} — ${currentPair}</div><div class="log-msg">${msg}</div>`;
+  list.prepend(entry);
+  while (list.children.length > 40) list.removeChild(list.lastChild);
+}
+
+// ── MAIN UPDATE CYCLE
+let tick = 0;
+let scenarioCycle = 0;
+const scenarios = ['oversold','neutral','overbought','neutral','oversold'];
+
+function update() {
+  tick++;
+  updateCandles();
+  updateSessions();
+
+  // Rotate scenarios every ~8 seconds
+  if (tick % 8 === 0) {
+    scenarioCycle = (scenarioCycle + 1) % scenarios.length;
+  }
+
+  const bias = scenarios[scenarioCycle];
+  rsiValues  = simRsi(bias);
+
+  TFS.forEach(tf => updateGauge(tf, rsiValues[tf]));
+
+  // Check confluence
+  const osCount = Object.values(rsiValues).filter(v => v <= 30).length;
+  const obCount = Object.values(rsiValues).filter(v => v >= 70).length;
+
+  if (osCount >= 3 && !tradeOpen) {
+    updateSignal('long', osCount);
+    updateLevels('long');
+    tradeOpen = true;
+    addLog(`🟢 LONG signal — ${osCount}/5 TFs oversold. Entry: ${entryPrice?.toFixed(5)} SL: ${stopLoss?.toFixed(5)}`, 'long');
+  } else if (obCount >= 3 && !tradeOpen) {
+    updateSignal('short', obCount);
+    updateLevels('short');
+    tradeOpen = true;
+    addLog(`🔴 SHORT signal — ${obCount}/5 TFs overbought. Entry: ${entryPrice?.toFixed(5)}`, 'short');
+  } else if (osCount < 2 && obCount < 2) {
+    if (tradeOpen) {
+      addLog('⬛ Confluence lost — monitoring exit conditions.', 'exit');
+      tradeOpen = false;
+    }
+    updateSignal(null, 0);
+  }
+
+  if (tradeOpen) updateExit();
+
+  // Occasional log entries
+  if (tick % 5 === 0) {
+    const msgs = [
+      `RSI 1H: ${rsiValues['1H']?.toFixed(1)} | 4H: ${rsiValues['4H']?.toFixed(1)}`,
+      `Scanning ${currentPair} — ${Object.values(rsiValues).filter(v=>v<=30).length} TF(s) oversold`,
+      `ATR volatility check: ${PAIRS[currentPair].atr.toFixed(5)}`,
+    ];
+    addLog(msgs[tick % msgs.length], 'info');
+  }
+
+  // Clock
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+
+function changePair() {
+  currentPair = document.getElementById('pairSelect').value;
+  tradeOpen = false; entryPrice = null;
+  document.getElementById('lvlEntry').textContent = '—';
+  document.getElementById('lvlSL').textContent    = '—';
+  document.getElementById('lvlTP').textContent    = '—';
+  document.getElementById('lvlRR').textContent    = '—';
+  addLog(`🔄 Pair switched to ${currentPair}`, 'info');
+}
+
+// ── BOOT
+initRsiGrid();
+update();
+setInterval(update, 1500);
+</script>
+</body>
+</html>
