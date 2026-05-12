@@ -602,14 +602,16 @@
   </div>
   <div class="header-right">
     <select class="pair-select" id="pairSelect" onchange="changePair()">
-      <option value="EURUSD">EUR/USD</option>
-      <option value="GBPUSD">GBP/USD</option>
-      <option value="USDJPY">USD/JPY</option>
-      <option value="XAUUSD">XAU/USD</option>
+      <option value="BTCUSDT">BTC/USDT</option>
+      <option value="ETHUSDT">ETH/USDT</option>
+      <option value="SOLUSDT">SOL/USDT</option>
+      <option value="BNBUSDT">BNB/USDT</option>
+      <option value="XRPUSDT">XRP/USDT</option>
+      <option value="DOGEUSDT">DOGE/USDT</option>
     </select>
     <div class="live-badge">
       <div class="live-dot"></div>
-      SIMULATED LIVE
+      <span id="liveBadge">CONNECTING</span>
     </div>
     <div class="clock" id="clock">--:--:--</div>
   </div>
@@ -725,37 +727,56 @@
 
   <!-- SIGNAL LOG -->
   <div class="panel log-panel">
-    <div class="panel-title">SIGNAL LOG</div>
+    <div class="panel-title">SIGNAL LOG — BINANCE LIVE</div>
     <div class="log-list" id="logList"></div>
   </div>
 
 </div>
 
 <script>
-// ── STATE
-const TFS = ['1M','5M','15M','1H','4H'];
-const PAIRS = {
-  EURUSD: { price: 1.0842, atr: 0.00045, spread: 0.3 },
-  GBPUSD: { price: 1.2710, atr: 0.00070, spread: 0.5 },
-  USDJPY: { price: 154.32, atr: 0.08,    spread: 0.4 },
-  XAUUSD: { price: 2318.5, atr: 1.80,    spread: 1.2 },
-};
+// ══════════════════════════════════════════════════════════════════
+//  BINANCE LIVE DATA — SPOT PUBLIC API (no key required)
+//  REST:      https://api.binance.com/api/v3/klines   (warm-up history)
+//  WS:        wss://stream.binance.com:9443/ws/<symbol>@kline_<tf>
+// ══════════════════════════════════════════════════════════════════
 
-let currentPair = 'EURUSD';
-let rsiValues   = {};
+const TFS = ['1m','5m','15m','1h','4h'];            // Binance interval codes
+const TF_LABEL = { '1m':'1M','5m':'5M','15m':'15M','1h':'1H','4h':'4H' };
+
+const PAIRS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT'];
+
+// Per-symbol decimals for display
+function decimalsFor(sym) {
+  if (sym === 'BTCUSDT') return 2;
+  if (sym === 'ETHUSDT' || sym === 'BNBUSDT' || sym === 'SOLUSDT') return 2;
+  if (sym === 'XRPUSDT') return 4;
+  if (sym === 'DOGEUSDT') return 5;
+  return 2;
+}
+
+let currentPair = 'BTCUSDT';
+let sockets     = {};                 // tf -> WebSocket
+let klines      = {};                 // tf -> array of {o,h,l,c,v,t}
+let rsiValues   = {};                 // tf -> number
+let atrValues   = {};                 // tf -> number
+let ema20_1h    = null;
+let lastPrice   = null;
 let tradeOpen   = false;
 let tradeDir    = null;
 let entryPrice  = null;
 let stopLoss    = null;
 let takeProfit  = null;
-let candleData  = [];
+let candleData  = [];                 // recent 1m candles for strip
+let lastSignalBar = null;             // timestamp of last triggering 1m bar
+
+const KLINE_LIMIT = 200;              // history per TF
 
 // ── INIT RSI GRID
 function initRsiGrid() {
   const grid = document.getElementById('rsiGrid');
   grid.innerHTML = TFS.map(tf => `
     <div class="rsi-card" id="card_${tf}">
-      <div class="rsi-tf">${tf}</div>
+      <div class="rsi-tf">${TF_LABEL[tf]}</div>
       <div class="gauge-wrap">
         <svg viewBox="0 0 90 90">
           <path class="gauge-track"
@@ -763,7 +784,7 @@ function initRsiGrid() {
             stroke-linecap="round"/>
           <path class="gauge-fill" id="gfill_${tf}"
             d="M 10 70 A 35 35 0 0 1 80 70"
-            stroke="${tf === '1M' || tf === '5M' ? '#4d9fff' : '#00e87a'}"
+            stroke="${tf === '1m' || tf === '5m' ? '#4d9fff' : '#00e87a'}"
             stroke-dashoffset="141.4"/>
         </svg>
       </div>
@@ -779,18 +800,19 @@ function updateGauge(tf, value) {
   const val   = document.getElementById(`rval_${tf}`);
   const sig   = document.getElementById(`rsig_${tf}`);
   const card  = document.getElementById(`card_${tf}`);
+  if (!fill) return;
   const arc   = 141.4;
-  const offset = arc - (value / 100) * arc;
+  const offset = arc - (Math.max(0, Math.min(100, value)) / 100) * arc;
 
   let color, sigClass, sigText;
-  if (value <= 28) {
+  if (value <= 30) {
     color = 'var(--green)'; sigClass = 'os'; sigText = 'OVERSOLD';
     card.className = 'rsi-card oversold';
-  } else if (value >= 72) {
+  } else if (value >= 70) {
     color = 'var(--red)'; sigClass = 'ob'; sigText = 'OVERBOUGHT';
     card.className = 'rsi-card overbought';
   } else {
-    color = tf === '1M' || tf === '5M' ? 'var(--blue)' : 'var(--muted)';
+    color = (tf === '1m' || tf === '5m') ? 'var(--blue)' : 'var(--muted)';
     sigClass = 'neutral'; sigText = 'NEUTRAL';
     card.className = 'rsi-card';
   }
@@ -803,28 +825,100 @@ function updateGauge(tf, value) {
   sig.className = `rsi-signal ${sigClass}`;
 }
 
-// ── GENERATE SIMULATED RSI
-function simRsi(bias) {
-  // bias: 'oversold' | 'overbought' | 'neutral'
-  const vals = {};
-  TFS.forEach((tf, i) => {
-    let base;
-    if (bias === 'oversold')   base = 22 + Math.random() * 16;   // 22–38
-    else if (bias === 'overbought') base = 66 + Math.random() * 16;
-    else                       base = 38 + Math.random() * 26;    // 38–64
-    // Add slight noise per TF
-    vals[tf] = Math.max(5, Math.min(95, base + (Math.random() - 0.5) * 10));
+// ── INDICATORS ────────────────────────────────────────────────────
+
+// Wilder's RSI over `period` bars (default 14). Uses closes array.
+function calcRSI(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i-1];
+    if (d >= 0) gain += d; else loss -= d;
+  }
+  let avgG = gain / period;
+  let avgL = loss / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    const g = d > 0 ?  d : 0;
+    const l = d < 0 ? -d : 0;
+    avgG = (avgG * (period - 1) + g) / period;
+    avgL = (avgL * (period - 1) + l) / period;
+  }
+  if (avgL === 0) return 100;
+  const rs = avgG / avgL;
+  return 100 - 100 / (1 + rs);
+}
+
+// Wilder ATR over `period` bars (default 14). Uses OHLC array.
+function calcATR(ohlc, period = 14) {
+  if (ohlc.length < period + 1) return null;
+  const trs = [];
+  for (let i = 1; i < ohlc.length; i++) {
+    const h = ohlc[i].h, l = ohlc[i].l, pc = ohlc[i-1].c;
+    trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+  }
+  let atr = 0;
+  for (let i = 0; i < period; i++) atr += trs[i];
+  atr /= period;
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period - 1) + trs[i]) / period;
+  }
+  return atr;
+}
+
+// EMA over closes
+function calcEMA(closes, period = 20) {
+  if (closes.length < period) return null;
+  const k = 2 / (period + 1);
+  let ema = closes.slice(0, period).reduce((a,b) => a+b, 0) / period;
+  for (let i = period; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+// ── RECOMPUTE ALL INDICATORS FROM klines
+function recompute() {
+  TFS.forEach(tf => {
+    const arr = klines[tf];
+    if (!arr || arr.length < 20) return;
+    const closes = arr.map(k => k.c);
+    const rsi = calcRSI(closes, 14);
+    if (rsi !== null) {
+      rsiValues[tf] = rsi;
+      updateGauge(tf, rsi);
+    }
+    const atr = calcATR(arr, 14);
+    if (atr !== null) atrValues[tf] = atr;
   });
-  return vals;
+  if (klines['1h']) {
+    const closes = klines['1h'].map(k => k.c);
+    ema20_1h = calcEMA(closes, 20);
+  }
+  // Update candle strip from latest 1m bars
+  if (klines['1m']) {
+    const last = klines['1m'].slice(-24);
+    candleData = last.map(k => {
+      const range = Math.max(0.0000001, k.h - k.l);
+      const bodyPct = Math.abs(k.c - k.o) / range;
+      return { bull: k.c >= k.o, h: 8 + bodyPct * 28 };
+    });
+    renderCandles();
+  }
+  // Track latest price from the most recent 1m bar
+  if (klines['1m'] && klines['1m'].length) {
+    lastPrice = klines['1m'][klines['1m'].length - 1].c;
+  }
 }
 
-// ── COUNT CONFLUENCE
-function countConfluence(rsiv, direction) {
-  const threshold = direction === 'long' ? v => v <= 30 : v => v >= 70;
-  return Object.values(rsiv).filter(threshold).length;
+function renderCandles() {
+  const strip = document.getElementById('candleStrip');
+  strip.innerHTML = candleData.map(c =>
+    `<div class="candle-bar" style="height:${c.h}px;background:${c.bull ? 'var(--green)' : 'var(--red)'};opacity:${0.5 + c.h/36}"></div>`
+  ).join('');
 }
 
-// ── UPDATE SIGNAL BOX
+// ── SIGNAL BOX
 function updateSignal(direction, confluenceCount) {
   const box  = document.getElementById('signalBox');
   const text = document.getElementById('signalText');
@@ -855,35 +949,37 @@ function updateSignal(direction, confluenceCount) {
   }
 }
 
-// ── UPDATE LEVELS
+// ── TRADE LEVELS (uses live price + 5m ATR for TP, 14-period ATR for SL scale)
 function updateLevels(dir) {
-  const pair = PAIRS[currentPair];
-  const price = pair.price + (Math.random() - 0.5) * pair.atr;
-  const atr   = pair.atr;
-  const sl    = dir === 'long' ? price - atr * 2.5 : price + atr * 2.5;
-  const tp    = dir === 'long' ? price + atr       : price - atr;
-  const dp    = currentPair === 'USDJPY' ? 3 : currentPair === 'XAUUSD' ? 2 : 5;
+  if (lastPrice == null || !atrValues['5m']) return;
+  const price = lastPrice;
+  const atr5  = atrValues['5m'];
+  const sl    = dir === 'long' ? price - atr5 * 2.5 : price + atr5 * 2.5;
+  const tp    = dir === 'long' ? price + atr5       : price - atr5;
+  const dp    = decimalsFor(currentPair);
 
   entryPrice = price; stopLoss = sl; takeProfit = tp; tradeDir = dir;
 
   document.getElementById('lvlEntry').textContent = price.toFixed(dp);
   document.getElementById('lvlSL').textContent    = sl.toFixed(dp);
   document.getElementById('lvlTP').textContent    = tp.toFixed(dp);
-  document.getElementById('lvlRR').textContent    = '1 : 2.5';
-  document.getElementById('atrVal').textContent   = atr.toFixed(dp);
-  document.getElementById('atrBarFill').style.width = `${Math.min(100, atr / 0.001 * 40)}%`;
+  document.getElementById('lvlRR').textContent    = '1 : 0.4';   // reward:risk (1×ATR TP vs 2.5×ATR SL)
+  document.getElementById('atrVal').textContent   = atr5.toFixed(dp);
+
+  // ATR bar scaled against the price itself (volatility %)
+  const volPct = (atr5 / price) * 100;          // e.g. 0.15%
+  const fillPct = Math.min(100, volPct * 40);   // 2.5% → 100%
+  document.getElementById('atrBarFill').style.width = `${fillPct}%`;
 }
 
-// ── UPDATE EXIT MONITOR
+// ── EXIT MONITOR (1H EMA20 + ATR buffer)
 function updateExit() {
-  if (!entryPrice) return;
-  const pair = PAIRS[currentPair];
-  const dp   = currentPair === 'USDJPY' ? 3 : currentPair === 'XAUUSD' ? 2 : 5;
-  const close = entryPrice + (Math.random() - 0.5) * pair.atr * 2;
-  const ema   = entryPrice - pair.atr * 0.3;
-  const atrTh = pair.atr;
+  if (lastPrice == null || ema20_1h == null || !atrValues['1h']) return;
+  const dp    = decimalsFor(currentPair);
+  const close = lastPrice;
+  const ema   = ema20_1h;
+  const atrTh = atrValues['1h'];
   const dist  = Math.abs(close - ema);
-  const exitNow = tradeDir === 'long' ? close < ema - atrTh : close > ema + atrTh;
 
   document.getElementById('exitClose').textContent = close.toFixed(dp);
   document.getElementById('exitEma').textContent   = ema.toFixed(dp);
@@ -891,6 +987,14 @@ function updateExit() {
   document.getElementById('exitDist').textContent  = dist.toFixed(dp);
 
   const status = document.getElementById('exitStatus');
+  if (!tradeOpen) {
+    status.className = 'exit-status hold';
+    status.textContent = '⏸ NO POSITION';
+    return;
+  }
+  const exitNow = tradeDir === 'long'
+    ? close < ema - atrTh
+    : close > ema + atrTh;
   if (exitNow) {
     status.className = 'exit-status close';
     status.textContent = '🔴 MARKET CLOSE — EXIT NOW';
@@ -900,31 +1004,15 @@ function updateExit() {
   }
 }
 
-// ── CANDLE STRIP
-function updateCandles() {
-  const strip = document.getElementById('candleStrip');
-  if (candleData.length === 0) {
-    for (let i = 0; i < 20; i++) {
-      candleData.push({ bull: Math.random() > 0.5, h: 6 + Math.random() * 24 });
-    }
-  } else {
-    candleData.shift();
-    candleData.push({ bull: Math.random() > 0.5, h: 6 + Math.random() * 24 });
-  }
-  strip.innerHTML = candleData.map(c =>
-    `<div class="candle-bar" style="height:${c.h}px;background:${c.bull ? 'var(--green)' : 'var(--red)'};opacity:${0.4 + c.h / 36}"></div>`
-  ).join('');
-}
-
-// ── SESSION TRACKER
+// ── SESSION TRACKER (unchanged — crypto is 24/7 but trader context still useful)
 function updateSessions() {
   const now = new Date();
   const h   = now.getUTCHours();
   const sessions = [
-    { name:'LONDON',  time:'03–05 EST', active: h>=8  && h<=10, avoid: false,  utc:'08–10 UTC' },
-    { name:'NY OPEN', time:'08–10 EST', active: h>=13 && h<=15, avoid: false,  utc:'13–15 UTC' },
-    { name:'OVERLAP', time:'08–12 EST', active: h>=13 && h<=17, avoid: false,  utc:'13–17 UTC' },
-    { name:'ASIAN',   time:'20–00 EST', active: false,           avoid: h>=0 && h<=8, utc:'00–08 UTC' },
+    { name:'LONDON',  active: h>=8  && h<=10, avoid: false, utc:'08–10 UTC' },
+    { name:'NY OPEN', active: h>=13 && h<=15, avoid: false, utc:'13–15 UTC' },
+    { name:'OVERLAP', active: h>=13 && h<=17, avoid: false, utc:'13–17 UTC' },
+    { name:'ASIAN',   active: h>=0  && h<=6,  avoid: false, utc:'00–06 UTC' },
   ];
   document.getElementById('sessionCards').innerHTML = sessions.map(s => `
     <div class="session-card ${s.active ? 'active' : s.avoid ? 'avoid' : ''}">
@@ -943,81 +1031,184 @@ function addLog(msg, type = 'info') {
   entry.className = `log-entry ${type}`;
   entry.innerHTML = `<div class="log-time">${now} — ${currentPair}</div><div class="log-msg">${msg}</div>`;
   list.prepend(entry);
-  while (list.children.length > 40) list.removeChild(list.lastChild);
+  while (list.children.length > 60) list.removeChild(list.lastChild);
 }
 
-// ── MAIN UPDATE CYCLE
-let tick = 0;
-let scenarioCycle = 0;
-const scenarios = ['oversold','neutral','overbought','neutral','oversold'];
-
-function update() {
-  tick++;
-  updateCandles();
-  updateSessions();
-
-  // Rotate scenarios every ~8 seconds
-  if (tick % 8 === 0) {
-    scenarioCycle = (scenarioCycle + 1) % scenarios.length;
-  }
-
-  const bias = scenarios[scenarioCycle];
-  rsiValues  = simRsi(bias);
-
-  TFS.forEach(tf => updateGauge(tf, rsiValues[tf]));
-
-  // Check confluence
+// ── EVALUATE CONFLUENCE + SIGNAL EMISSION
+function evaluate() {
   const osCount = Object.values(rsiValues).filter(v => v <= 30).length;
   const obCount = Object.values(rsiValues).filter(v => v >= 70).length;
+  const totalTF = Object.keys(rsiValues).length;
+
+  // need all 5 TFs computed before firing
+  if (totalTF < TFS.length) {
+    updateSignal(null, 0);
+    updateExit();
+    return;
+  }
+
+  const oneMinBar = klines['1m'] ? klines['1m'][klines['1m'].length-1].t : null;
 
   if (osCount >= 3 && !tradeOpen) {
     updateSignal('long', osCount);
     updateLevels('long');
     tradeOpen = true;
-    addLog(`🟢 LONG signal — ${osCount}/5 TFs oversold. Entry: ${entryPrice?.toFixed(5)} SL: ${stopLoss?.toFixed(5)}`, 'long');
+    lastSignalBar = oneMinBar;
+    const dp = decimalsFor(currentPair);
+    addLog(`🟢 LONG — ${osCount}/5 TFs oversold. Entry ${entryPrice?.toFixed(dp)}  SL ${stopLoss?.toFixed(dp)}  TP ${takeProfit?.toFixed(dp)}`, 'long');
   } else if (obCount >= 3 && !tradeOpen) {
     updateSignal('short', obCount);
     updateLevels('short');
     tradeOpen = true;
-    addLog(`🔴 SHORT signal — ${obCount}/5 TFs overbought. Entry: ${entryPrice?.toFixed(5)}`, 'short');
-  } else if (osCount < 2 && obCount < 2) {
-    if (tradeOpen) {
-      addLog('⬛ Confluence lost — monitoring exit conditions.', 'exit');
+    lastSignalBar = oneMinBar;
+    const dp = decimalsFor(currentPair);
+    addLog(`🔴 SHORT — ${obCount}/5 TFs overbought. Entry ${entryPrice?.toFixed(dp)}  SL ${stopLoss?.toFixed(dp)}  TP ${takeProfit?.toFixed(dp)}`, 'short');
+  } else if (tradeOpen) {
+    // keep showing the active direction + dots; just refresh exit monitor
+    const activeCount = tradeDir === 'long' ? osCount : obCount;
+    updateSignal(tradeDir, Math.max(activeCount, 1));
+    if (activeCount < 2) {
+      addLog('⬛ Confluence lost — monitoring exit conditions', 'exit');
       tradeOpen = false;
+      updateSignal(null, 0);
     }
+  } else {
     updateSignal(null, 0);
   }
 
-  if (tradeOpen) updateExit();
-
-  // Occasional log entries
-  if (tick % 5 === 0) {
-    const msgs = [
-      `RSI 1H: ${rsiValues['1H']?.toFixed(1)} | 4H: ${rsiValues['4H']?.toFixed(1)}`,
-      `Scanning ${currentPair} — ${Object.values(rsiValues).filter(v=>v<=30).length} TF(s) oversold`,
-      `ATR volatility check: ${PAIRS[currentPair].atr.toFixed(5)}`,
-    ];
-    addLog(msgs[tick % msgs.length], 'info');
-  }
-
-  // Clock
-  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+  updateExit();
 }
 
-function changePair() {
+// ── BINANCE REST WARMUP
+async function fetchKlines(symbol, interval) {
+  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${KLINE_LIMIT}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Binance ${interval} HTTP ${r.status}`);
+  const raw = await r.json();
+  // [ openTime, open, high, low, close, volume, closeTime, ... ]
+  return raw.map(k => ({
+    t: k[0],
+    o: parseFloat(k[1]),
+    h: parseFloat(k[2]),
+    l: parseFloat(k[3]),
+    c: parseFloat(k[4]),
+    v: parseFloat(k[5]),
+  }));
+}
+
+async function warmup(symbol) {
+  addLog(`⏳ Fetching history for ${symbol}…`, 'info');
+  try {
+    const results = await Promise.all(TFS.map(tf => fetchKlines(symbol, tf)));
+    TFS.forEach((tf, i) => { klines[tf] = results[i]; });
+    recompute();
+    evaluate();
+    document.getElementById('liveBadge').textContent = 'LIVE — BINANCE';
+    addLog(`✅ History loaded (${KLINE_LIMIT} bars × 5 TFs)`, 'info');
+  } catch (e) {
+    document.getElementById('liveBadge').textContent = 'REST ERROR';
+    addLog(`⚠️ REST error: ${e.message}`, 'exit');
+  }
+}
+
+// ── BINANCE WEBSOCKETS (one stream per timeframe)
+function openSockets(symbol) {
+  closeSockets();
+  const lower = symbol.toLowerCase();
+  TFS.forEach(tf => {
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${lower}@kline_${tf}`);
+    ws.onopen = () => {
+      if (tf === '1m') addLog(`🔌 WS connected: ${symbol} @ ${tf}`, 'info');
+    };
+    ws.onmessage = ev => {
+      const msg = JSON.parse(ev.data);
+      const k   = msg.k;
+      if (!k) return;
+      const bar = {
+        t: k.t,
+        o: parseFloat(k.o),
+        h: parseFloat(k.h),
+        l: parseFloat(k.l),
+        c: parseFloat(k.c),
+        v: parseFloat(k.v),
+      };
+      const arr = klines[tf];
+      if (!arr || !arr.length) return;
+      const last = arr[arr.length - 1];
+      if (bar.t === last.t) {
+        arr[arr.length - 1] = bar;          // update in-progress bar
+      } else if (bar.t > last.t) {
+        arr.push(bar);                       // new bar started
+        if (arr.length > KLINE_LIMIT) arr.shift();
+      }
+      // Only run heavy recompute on the 1m stream tick (most frequent);
+      // for other TFs, recompute when their bar closes (k.x === true).
+      if (tf === '1m' || k.x) {
+        recompute();
+        evaluate();
+      }
+    };
+    ws.onerror = () => {
+      document.getElementById('liveBadge').textContent = 'WS ERROR';
+    };
+    ws.onclose = () => {
+      // Auto-reconnect if we're still on the same pair
+      if (currentPair.toLowerCase() === lower) {
+        setTimeout(() => {
+          if (currentPair.toLowerCase() === lower) openSockets(currentPair);
+        }, 2500);
+      }
+    };
+    sockets[tf] = ws;
+  });
+}
+
+function closeSockets() {
+  Object.values(sockets).forEach(ws => {
+    try { ws.onclose = null; ws.close(); } catch (_) {}
+  });
+  sockets = {};
+}
+
+// ── PAIR SWITCH
+async function changePair() {
   currentPair = document.getElementById('pairSelect').value;
-  tradeOpen = false; entryPrice = null;
-  document.getElementById('lvlEntry').textContent = '—';
-  document.getElementById('lvlSL').textContent    = '—';
-  document.getElementById('lvlTP').textContent    = '—';
-  document.getElementById('lvlRR').textContent    = '—';
-  addLog(`🔄 Pair switched to ${currentPair}`, 'info');
+  tradeOpen = false; entryPrice = null; stopLoss = null; takeProfit = null;
+  rsiValues = {}; atrValues = {}; klines = {}; ema20_1h = null; lastPrice = null;
+
+  ['lvlEntry','lvlSL','lvlTP','lvlRR','atrVal','exitClose','exitEma','exitAtr','exitDist']
+    .forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('atrBarFill').style.width = '0%';
+  updateSignal(null, 0);
+  TFS.forEach(tf => {
+    const v = document.getElementById(`rval_${tf}`); if (v) v.textContent = '—';
+    const s = document.getElementById(`rsig_${tf}`); if (s) { s.textContent = 'NEUTRAL'; s.className = 'rsi-signal neutral'; }
+    const c = document.getElementById(`card_${tf}`); if (c) c.className = 'rsi-card';
+    const f = document.getElementById(`gfill_${tf}`); if (f) f.style.strokeDashoffset = 141.4;
+  });
+
+  addLog(`🔄 Switched to ${currentPair}`, 'info');
+  document.getElementById('liveBadge').textContent = 'CONNECTING';
+  closeSockets();
+  await warmup(currentPair);
+  openSockets(currentPair);
+}
+
+// ── CLOCK + SESSIONS
+function tickClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+  updateSessions();
 }
 
 // ── BOOT
 initRsiGrid();
-update();
-setInterval(update, 1500);
+updateSessions();
+tickClock();
+setInterval(tickClock, 1000);
+(async () => {
+  await warmup(currentPair);
+  openSockets(currentPair);
+})();
 </script>
 </body>
 </html>
