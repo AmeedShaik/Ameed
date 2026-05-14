@@ -159,7 +159,7 @@
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr 320px;
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto auto auto;
     gap: 1px;
     background: var(--border);
     min-height: calc(100vh - 73px);
@@ -484,7 +484,7 @@
   /* ── SIGNAL LOG ── */
   .log-panel {
     grid-column: 3;
-    grid-row: 1 / 4;
+    grid-row: 1 / 5;
     display: flex;
     flex-direction: column;
   }
@@ -580,6 +580,202 @@
   /* ── SPAN HELPERS ── */
   .span-2 { grid-column: span 2; }
   .full-row { grid-column: 1 / 3; }
+
+  /* ── ACCOUNT / POSITIONS / TRADE ── */
+  .acct-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .acct-cell {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+
+  .acct-cell .k {
+    font-family: var(--font-head);
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  .acct-cell .v {
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .acct-cell .v.up   { color: var(--green); }
+  .acct-cell .v.down { color: var(--red); }
+
+  .pos-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .pos-table th, .pos-table td {
+    padding: 6px 8px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .pos-table th {
+    font-family: var(--font-head);
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-align: right;
+    font-weight: 400;
+  }
+
+  .pos-table th:first-child,
+  .pos-table td:first-child { text-align: left; }
+
+  .pos-table td.buy  { color: var(--green); }
+  .pos-table td.sell { color: var(--red); }
+
+  .pos-table .pnl-up   { color: var(--green); }
+  .pos-table .pnl-down { color: var(--red); }
+
+  .btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-head);
+    font-size: 10px;
+    letter-spacing: 2px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn:hover:not(:disabled) {
+    background: var(--bg2);
+    border-color: var(--blue);
+  }
+
+  .btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .btn.long  { border-color: var(--green); color: var(--green); }
+  .btn.short { border-color: var(--red);   color: var(--red); }
+  .btn.close-x {
+    padding: 3px 8px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .arm-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 12px;
+  }
+
+  .arm-row.armed {
+    border-color: var(--amber);
+    box-shadow: 0 0 14px var(--amber-dim);
+  }
+
+  .arm-label {
+    font-family: var(--font-head);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+  }
+
+  .arm-row.armed .arm-label { color: var(--amber); }
+
+  .switch {
+    position: relative;
+    width: 42px; height: 22px;
+    background: var(--border);
+    border-radius: 11px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 18px; height: 18px;
+    background: var(--text);
+    border-radius: 50%;
+    transition: left 0.2s;
+  }
+
+  .switch.on  { background: var(--amber); }
+  .switch.on::after { left: 22px; }
+
+  .trade-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .trade-input {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+  }
+
+  .trade-input label {
+    font-family: var(--font-head);
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .trade-input input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--font-data);
+    font-size: 14px;
+    outline: none;
+  }
+
+  .trade-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .trade-buttons .btn { padding: 12px; font-size: 11px; }
+
+  .trade-readout {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  .trade-readout span { color: var(--text); }
 
   /* ── RESPONSIVE ── */
   @media (max-width: 1100px) {
@@ -719,6 +915,80 @@
       NY Open 08:00–10:00 EST<br>
       Overlap 08:00–12:00 EST
     </div>
+  </div>
+
+  <!-- ACCOUNT -->
+  <div class="panel" style="grid-row:4">
+    <div class="panel-title">ACCOUNT</div>
+    <div class="acct-grid">
+      <div class="acct-cell">
+        <div class="k">BALANCE</div>
+        <div class="v" id="acctBalance">—</div>
+      </div>
+      <div class="acct-cell">
+        <div class="k">EQUITY</div>
+        <div class="v" id="acctEquity">—</div>
+      </div>
+      <div class="acct-cell">
+        <div class="k">FREE MARGIN</div>
+        <div class="v" id="acctFreeMargin">—</div>
+      </div>
+      <div class="acct-cell">
+        <div class="k">FLOATING P/L</div>
+        <div class="v" id="acctProfit">—</div>
+      </div>
+    </div>
+    <div class="acct-cell" style="margin-top:8px;">
+      <div class="k">LOGIN / SERVER</div>
+      <div class="v" id="acctLogin" style="font-size:12px;">—</div>
+    </div>
+  </div>
+
+  <!-- POSITIONS + TRADE PANEL -->
+  <div class="panel" style="grid-row:4">
+    <div class="panel-title">TRADE — ARM TO ENABLE</div>
+
+    <div class="arm-row" id="armRow">
+      <div>
+        <div class="arm-label" id="armLabel">DISARMED</div>
+        <div style="font-size:10px; color:var(--text-dim); margin-top:2px;" id="armHelp">
+          Click switch to allow order placement.
+        </div>
+      </div>
+      <div class="switch" id="armSwitch" onclick="toggleArm()"></div>
+    </div>
+
+    <div class="trade-row">
+      <div class="trade-input">
+        <label>RISK %</label>
+        <input id="riskPct" type="number" step="0.1" min="0.1" max="5" value="0.5" oninput="recomputeTradeReadout()">
+      </div>
+      <div class="trade-input">
+        <label>VOLUME (LOTS)</label>
+        <input id="lotSize" type="number" step="0.01" min="0" value="0" readonly>
+      </div>
+    </div>
+
+    <div class="trade-buttons">
+      <button class="btn long"  id="btnLong"  disabled onclick="confirmAndPlace('BUY')">▲ EXECUTE LONG</button>
+      <button class="btn short" id="btnShort" disabled onclick="confirmAndPlace('SELL')">▼ EXECUTE SHORT</button>
+    </div>
+
+    <div class="trade-readout" id="tradeReadout">
+      Waiting for signal...
+    </div>
+
+    <div class="panel-title" style="margin-top:18px;">OPEN POSITIONS</div>
+    <table class="pos-table" id="posTable">
+      <thead>
+        <tr>
+          <th>SYM</th><th>SIDE</th><th>VOL</th><th>OPEN</th><th>SL/TP</th><th>P/L</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="posBody">
+        <tr><td colspan="7" style="text-align:center; color:var(--text-dim); padding:20px;">No open positions</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- SIGNAL LOG -->
@@ -910,6 +1180,8 @@ function recompute() {
   if (klines['1m'] && klines['1m'].length) {
     lastPrice = klines['1m'][klines['1m'].length - 1].c;
   }
+  // Refresh trade-panel readout (lot size depends on price + ATR)
+  if (typeof recomputeTradeReadout === 'function') recomputeTradeReadout();
 }
 
 function renderCandles() {
@@ -1181,8 +1453,10 @@ async function changePair() {
   addLog(`🔄 Switched to ${currentPair}`, 'info');
   document.getElementById('liveBadge').textContent = 'CONNECTING';
   closeSockets();
+  await loadSymbolMeta(currentPair);
   await warmup(currentPair);
   openSockets(currentPair);
+  pollPositions();
 }
 
 // ── CLOCK + SESSIONS
@@ -1191,14 +1465,291 @@ function tickClock() {
   updateSessions();
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  ACCOUNT + POSITIONS + TRADE PLACEMENT
+// ══════════════════════════════════════════════════════════════════
+
+let armed          = false;            // master safety switch
+let tradingAllowed = false;            // bridge --enable-trading flag
+let symbolMeta     = null;             // {digits, point, trade_tick_value, ...}
+let accountCcy     = 'USD';
+let accountEquity  = null;
+
+function fmtCcy(v) {
+  if (v == null || isNaN(v)) return '—';
+  return `${accountCcy} ${Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+}
+
+async function pollHealth() {
+  try {
+    const r = await fetch(`${BRIDGE_HTTP}/api/health`);
+    const j = await r.json();
+    tradingAllowed = !!j.trading_enabled;
+    if (j.account) {
+      accountCcy = j.account.currency || 'USD';
+    }
+    updateArmUI();
+  } catch (e) { /* bridge not up yet */ }
+}
+
+async function pollAccount() {
+  try {
+    const r = await fetch(`${BRIDGE_HTTP}/api/account`);
+    if (!r.ok) return;
+    const a = await r.json();
+    accountCcy = a.currency || accountCcy;
+    accountEquity = a.equity;
+    document.getElementById('acctBalance').textContent    = fmtCcy(a.balance);
+    document.getElementById('acctEquity').textContent     = fmtCcy(a.equity);
+    document.getElementById('acctFreeMargin').textContent = fmtCcy(a.margin_free);
+    const pnlEl = document.getElementById('acctProfit');
+    pnlEl.textContent = fmtCcy(a.profit);
+    pnlEl.className = 'v ' + (a.profit > 0 ? 'up' : a.profit < 0 ? 'down' : '');
+    document.getElementById('acctLogin').textContent =
+      `${a.login} @ ${a.server || '?'}  (1:${a.leverage})`;
+    recomputeTradeReadout();
+  } catch (e) { /* ignore */ }
+}
+
+async function pollPositions() {
+  try {
+    const r = await fetch(`${BRIDGE_HTTP}/api/positions?symbol=${encodeURIComponent(currentPair)}`);
+    if (!r.ok) return;
+    const positions = await r.json();
+    const body = document.getElementById('posBody');
+    if (!positions.length) {
+      body.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-dim); padding:20px;">No open positions</td></tr>`;
+      return;
+    }
+    const dp = decimalsFor(currentPair);
+    body.innerHTML = positions.map(p => `
+      <tr>
+        <td>${p.symbol}</td>
+        <td class="${p.type === 'BUY' ? 'buy' : 'sell'}">${p.type}</td>
+        <td>${p.volume.toFixed(2)}</td>
+        <td>${p.price_open.toFixed(dp)}</td>
+        <td style="font-size:10px;">
+          ${p.sl ? p.sl.toFixed(dp) : '—'} / ${p.tp ? p.tp.toFixed(dp) : '—'}
+        </td>
+        <td class="${p.profit >= 0 ? 'pnl-up' : 'pnl-down'}">${p.profit.toFixed(2)}</td>
+        <td><button class="btn close-x" onclick="closePosition(${p.ticket})">CLOSE</button></td>
+      </tr>
+    `).join('');
+  } catch (e) { /* ignore */ }
+}
+
+async function loadSymbolMeta(symbol) {
+  try {
+    const r = await fetch(`${BRIDGE_HTTP}/api/symbol_info?symbol=${encodeURIComponent(symbol)}`);
+    if (!r.ok) { symbolMeta = null; return; }
+    symbolMeta = await r.json();
+  } catch (e) { symbolMeta = null; }
+}
+
+// ── ARM toggle (always starts disarmed on page load) ─────────────
+function toggleArm() {
+  if (!tradingAllowed) {
+    addLog('⚠ Trading disabled. Restart bridge with --enable-trading.', 'exit');
+    return;
+  }
+  armed = !armed;
+  if (armed) {
+    addLog('🔓 Trading ARMED — execute buttons live', 'exit');
+  } else {
+    addLog('🔒 Trading DISARMED', 'info');
+  }
+  updateArmUI();
+}
+
+function updateArmUI() {
+  const row = document.getElementById('armRow');
+  const sw  = document.getElementById('armSwitch');
+  const lab = document.getElementById('armLabel');
+  const help = document.getElementById('armHelp');
+
+  if (!tradingAllowed) {
+    row.classList.remove('armed');
+    sw.classList.remove('on');
+    lab.textContent = 'TRADING DISABLED';
+    help.textContent = 'Bridge running in read-only mode.';
+    armed = false;
+  } else if (armed) {
+    row.classList.add('armed');
+    sw.classList.add('on');
+    lab.textContent = '◉ ARMED';
+    help.textContent = 'Orders will be placed on click. Disarm when done.';
+  } else {
+    row.classList.remove('armed');
+    sw.classList.remove('on');
+    lab.textContent = 'DISARMED';
+    help.textContent = 'Click switch to allow order placement.';
+  }
+  refreshTradeButtons();
+}
+
+// ── Lot sizing + readout ─────────────────────────────────────────
+function computeLotSize() {
+  // risk_amount = equity * (risk% / 100)
+  // sl_distance_price = |entry - SL|
+  // sl_distance_ticks = sl_distance_price / tick_size
+  // loss_per_lot = sl_distance_ticks * tick_value
+  // lots = risk_amount / loss_per_lot
+  if (!symbolMeta || !accountEquity || lastPrice == null || !atrValues['5m']) return 0;
+  const riskPct  = parseFloat(document.getElementById('riskPct').value);
+  if (isNaN(riskPct) || riskPct <= 0) return 0;
+
+  const atr5    = atrValues['5m'];
+  const slDist  = atr5 * 2.5;
+  const tickSize = symbolMeta.trade_tick_size || symbolMeta.point;
+  const tickVal  = symbolMeta.trade_tick_value;
+  if (!tickSize || !tickVal) return 0;
+
+  const slTicks = slDist / tickSize;
+  const lossPerLot = slTicks * tickVal;
+  if (lossPerLot <= 0) return 0;
+
+  const riskAmount = accountEquity * (riskPct / 100);
+  let lots = riskAmount / lossPerLot;
+
+  // Snap to volume_step and clamp to broker limits
+  const step = symbolMeta.volume_step || 0.01;
+  lots = Math.floor(lots / step) * step;
+  lots = Math.max(symbolMeta.volume_min || 0.01, Math.min(symbolMeta.volume_max || 100, lots));
+  return Math.round(lots * 100) / 100;
+}
+
+function recomputeTradeReadout() {
+  const lots = computeLotSize();
+  document.getElementById('lotSize').value = lots.toFixed(2);
+
+  const dp     = decimalsFor(currentPair);
+  const atr5   = atrValues['5m'];
+  const ro     = document.getElementById('tradeReadout');
+
+  if (!lastPrice || !atr5) {
+    ro.innerHTML = 'Waiting for price data...';
+    refreshTradeButtons();
+    return;
+  }
+  const slDist = atr5 * 2.5;
+  const tpDist = atr5;
+  const riskPct = parseFloat(document.getElementById('riskPct').value) || 0;
+  const riskAmt = accountEquity ? (accountEquity * riskPct / 100) : null;
+
+  const tickSize = symbolMeta?.trade_tick_size || symbolMeta?.point;
+  const tickVal  = symbolMeta?.trade_tick_value;
+  let estLoss = null, estProfit = null;
+  if (tickSize && tickVal && lots > 0) {
+    estLoss   = (slDist / tickSize) * tickVal * lots;
+    estProfit = (tpDist / tickSize) * tickVal * lots;
+  }
+
+  ro.innerHTML = `
+    Price: <span>${lastPrice.toFixed(dp)}</span> &middot;
+    SL dist: <span>${slDist.toFixed(dp)}</span> &middot;
+    TP dist: <span>${tpDist.toFixed(dp)}</span><br>
+    Risk: <span>${riskAmt != null ? fmtCcy(riskAmt) : '—'}</span> &middot;
+    Est. loss @ SL: <span>${estLoss != null ? fmtCcy(estLoss) : '—'}</span> &middot;
+    Est. gain @ TP: <span>${estProfit != null ? fmtCcy(estProfit) : '—'}</span>
+  `;
+  refreshTradeButtons();
+}
+
+function refreshTradeButtons() {
+  const lots = parseFloat(document.getElementById('lotSize').value) || 0;
+  const ready = armed && tradingAllowed && lots > 0 && lastPrice != null && atrValues['5m'];
+  document.getElementById('btnLong').disabled  = !ready;
+  document.getElementById('btnShort').disabled = !ready;
+}
+
+// ── Order placement ─────────────────────────────────────────────
+async function confirmAndPlace(side) {
+  if (!armed || !tradingAllowed) return;
+  const lots = parseFloat(document.getElementById('lotSize').value);
+  if (!lots || lots <= 0) { alert('Lot size is 0. Adjust risk %.'); return; }
+  if (!lastPrice || !atrValues['5m']) { alert('Price/ATR not ready'); return; }
+
+  const dp    = decimalsFor(currentPair);
+  const atr5  = atrValues['5m'];
+  const entry = lastPrice;
+  const sl    = side === 'BUY' ? entry - atr5 * 2.5 : entry + atr5 * 2.5;
+  const tp    = side === 'BUY' ? entry + atr5       : entry - atr5;
+
+  const ok = confirm(
+    `Place ${side} ${lots.toFixed(2)} ${currentPair}?\n\n` +
+    `Entry  ~ ${entry.toFixed(dp)}\n` +
+    `SL     ~ ${sl.toFixed(dp)}\n` +
+    `TP     ~ ${tp.toFixed(dp)}\n\n` +
+    `This is a LIVE order on account ${accountCcy}. Continue?`
+  );
+  if (!ok) return;
+
+  try {
+    const r = await fetch(`${BRIDGE_HTTP}/api/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbol: currentPair,
+        side,
+        volume: lots,
+        sl: parseFloat(sl.toFixed(dp)),
+        tp: parseFloat(tp.toFixed(dp)),
+        comment: 'kiro-mtf',
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      addLog(`❌ Order rejected: ${j.detail || JSON.stringify(j)}`, 'exit');
+      alert(`Order rejected:\n${j.detail || JSON.stringify(j)}`);
+      return;
+    }
+    addLog(`✅ ${side} ${lots.toFixed(2)} ${currentPair} filled (deal ${j.deal})`, side === 'BUY' ? 'long' : 'short');
+    armed = false;        // auto-disarm after a successful order
+    updateArmUI();
+    pollAccount();
+    pollPositions();
+  } catch (e) {
+    addLog(`❌ Order error: ${e.message}`, 'exit');
+  }
+}
+
+async function closePosition(ticket) {
+  if (!tradingAllowed) {
+    alert('Trading disabled in bridge.');
+    return;
+  }
+  if (!confirm(`Close position #${ticket}?`)) return;
+  try {
+    const r = await fetch(`${BRIDGE_HTTP}/api/close/${ticket}`, { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) {
+      addLog(`❌ Close rejected: ${j.detail || JSON.stringify(j)}`, 'exit');
+      return;
+    }
+    addLog(`✅ Closed #${ticket}`, 'exit');
+    pollAccount();
+    pollPositions();
+  } catch (e) {
+    addLog(`❌ Close error: ${e.message}`, 'exit');
+  }
+}
+
 // ── BOOT
 initRsiGrid();
 updateSessions();
 tickClock();
 setInterval(tickClock, 1000);
 (async () => {
+  await pollHealth();
+  await loadSymbolMeta(currentPair);
   await warmup(currentPair);
   openSockets(currentPair);
+  pollAccount();
+  pollPositions();
+  setInterval(pollAccount,   2000);
+  setInterval(pollPositions, 2000);
+  setInterval(pollHealth,   10000);
+  updateArmUI();
 })();
 </script>
 </body>
