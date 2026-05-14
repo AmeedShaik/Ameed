@@ -5,28 +5,32 @@ Reads OHLCV bars from a running MetaTrader 5 terminal and re-exposes them
 over HTTP + WebSocket using the same payload shape as Binance, so the
 existing dashboard JavaScript (fetchKlines / ws.onmessage) works unchanged.
 
-It also exposes read-only account + positions endpoints, and OPTIONALLY
-order placement when the bridge is started with --enable-trading.
+It also exposes read-only account + positions endpoints, OPTIONALLY
+order placement when started with --enable-trading, and an OPTIONAL
+trailing-SL background task when started with --trailing-sl.
 
 Endpoints
 ---------
 GET  /                                         -> serves mtf_dashboard.html
-GET  /api/health                               -> connection + trading flag
+GET  /api/health                               -> connection + flags
 GET  /api/symbols                              -> list visible MT5 symbols
 GET  /api/symbol_info?symbol=XAUUSD            -> point, digits, tick value, etc.
 GET  /api/klines?symbol=XAUUSD&interval=1m     -> Binance-shaped array
 GET  /api/account                              -> balance, equity, margin, etc.
 GET  /api/positions?symbol=XAUUSD              -> open positions (filtered)
 POST /api/order      [trading]                 -> place market order
-POST /api/close/{ticket} [trading]             -> close a single position
+POST /api/close/{ticket} [trading]             -> close one position
+POST /api/modify_sl  [trading]                 -> move SL/TP on a position
 WS   /ws/{symbol}/{interval}                   -> { k: {t,o,h,l,c,v,x} } frames
 
 Run
 ---
 1. Open MT5 and log in to your broker (must stay open).
 2. pip install -r requirements.txt
-3. python mt5_bridge.py                  # read-only
-   python mt5_bridge.py --enable-trading # allows order placement
+3. Pick a mode:
+     python mt5_bridge.py                                # read-only
+     python mt5_bridge.py --enable-trading               # manual orders allowed
+     python mt5_bridge.py --enable-trading --trailing-sl # also auto-trail SL
 4. Open http://localhost:8000 in your browser.
 """
 
@@ -37,7 +41,7 @@ import asyncio
 import contextlib
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import MetaTrader5 as mt5
 import uvicorn
@@ -56,8 +60,14 @@ DASHBOARD_FILE = Path(__file__).with_name("mtf_dashboard.html")
 MAGIC = 90210                # tags trades placed by the dashboard
 DEVIATION = 20               # max price slippage (points)
 
+# Trailing-SL parameters (only used when --trailing-sl is set).
+TRAIL_POLL_SECONDS = 5.0     # how often to evaluate trailing SL
+TRAIL_ATR_MULT = 2.0         # trail at price - 2.0 * ATR(M5,14) for longs
+TRAIL_MIN_STEP_ATR = 0.5     # only update SL if new SL is >=0.5 ATR better
+
 # Set by CLI args at startup. Defaults to safe (read-only).
 TRADING_ENABLED = False
+TRAILING_ENABLED = False
 
 # Maps the dashboard's interval codes to MT5 timeframe constants.
 TF_MAP = {
@@ -98,6 +108,8 @@ def mt5_init() -> None:
         "TRADING %s. Start with --enable-trading to allow order placement.",
         "ENABLED" if TRADING_ENABLED else "DISABLED (read-only)",
     )
+    if TRAILING_ENABLED:
+        log.warning("TRAILING-SL ENABLED. Will trail magic=%d positions.", MAGIC)
 
 
 def mt5_shutdown() -> None:
@@ -168,6 +180,24 @@ async def fetch_bars(symbol: str, interval: str, limit: int) -> List[dict]:
     return await asyncio.to_thread(_fetch_bars_sync, symbol, interval, limit)
 
 
+def _atr_from_rates(symbol: str, timeframe: int, period: int = 14) -> Optional[float]:
+    """Wilder ATR over `period` bars on the given MT5 timeframe."""
+    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, period + 50)
+    if rates is None or len(rates) < period + 1:
+        return None
+    trs = []
+    for i in range(1, len(rates)):
+        h, l = float(rates[i]["high"]), float(rates[i]["low"])
+        pc = float(rates[i - 1]["close"])
+        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+    if len(trs) < period:
+        return None
+    atr = sum(trs[:period]) / period
+    for tr in trs[period:]:
+        atr = (atr * (period - 1) + tr) / period
+    return atr
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -175,8 +205,10 @@ app = FastAPI(title="MT5 Dashboard Bridge")
 
 
 @app.on_event("startup")
-def _startup() -> None:
+async def _startup() -> None:
     mt5_init()
+    if TRAILING_ENABLED:
+        asyncio.create_task(_trailing_sl_loop())
 
 
 @app.on_event("shutdown")
@@ -200,6 +232,8 @@ def health() -> dict:
         "connected": getattr(info, "connected", False),
         "build": getattr(info, "build", None),
         "trading_enabled": TRADING_ENABLED,
+        "trailing_enabled": TRAILING_ENABLED,
+        "magic": MAGIC,
         "account": {
             "login": getattr(acct, "login", None),
             "server": getattr(acct, "server", None),
@@ -301,6 +335,12 @@ class OrderRequest(BaseModel):
     comment: str = "kiro-mtf"
 
 
+class ModifySLRequest(BaseModel):
+    ticket: int
+    sl: Optional[float] = None
+    tp: Optional[float] = None
+
+
 @app.post("/api/order")
 def place_order(req: OrderRequest) -> dict:
     require_trading()
@@ -396,6 +436,127 @@ def close_position(ticket: int) -> dict:
     return payload
 
 
+@app.post("/api/modify_sl")
+def modify_sl(req: ModifySLRequest) -> dict:
+    """Move SL and/or TP on an existing position. Used by trailing-SL loop and by manual UI."""
+    require_trading()
+    matches = mt5.positions_get(ticket=req.ticket) or ()
+    if not matches:
+        raise HTTPException(404, f"No open position with ticket {req.ticket}")
+    pos = matches[0]
+
+    request = {
+        "action": mt5.TRADE_ACTION_SLTP,
+        "position": req.ticket,
+        "symbol": pos.symbol,
+        "sl": float(req.sl) if req.sl is not None else float(pos.sl),
+        "tp": float(req.tp) if req.tp is not None else float(pos.tp),
+        "magic": pos.magic or MAGIC,
+    }
+    log.info("MODIFY-SL >> %s", request)
+    result = mt5.order_send(request)
+    if result is None:
+        raise HTTPException(502, f"order_send returned None: {mt5.last_error()}")
+
+    payload = result._asdict()
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        raise HTTPException(
+            502,
+            f"Modify-SL rejected (retcode={result.retcode}): {payload.get('comment')}",
+        )
+    log.info("MODIFY-SL << ticket=%s new SL=%s TP=%s", req.ticket, request["sl"], request["tp"])
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# Trailing-SL background task (only runs if --trailing-sl is set)
+# ---------------------------------------------------------------------------
+def _trail_target_sl(pos, atr5: float, info) -> Optional[float]:
+    """
+    Compute the candidate new SL for a position.
+    Trails at price - TRAIL_ATR_MULT*ATR (long) or price + TRAIL_ATR_MULT*ATR (short).
+    Returns None if the new SL would not be strictly better than the current SL.
+    """
+    if atr5 is None or atr5 <= 0:
+        return None
+    digits = info.digits
+    is_buy = pos.type == mt5.ORDER_TYPE_BUY
+
+    # Use mid price as anchor; current_price would also work.
+    price = pos.price_current
+    if is_buy:
+        candidate = round(price - TRAIL_ATR_MULT * atr5, digits)
+        # Long: only raise SL, never lower it. Also must be above entry-eps to lock profit.
+        if pos.sl and candidate <= pos.sl:
+            return None
+        # Require new SL to be at least TRAIL_MIN_STEP_ATR closer than the old one.
+        if pos.sl and (candidate - pos.sl) < TRAIL_MIN_STEP_ATR * atr5:
+            return None
+        return candidate
+    else:
+        candidate = round(price + TRAIL_ATR_MULT * atr5, digits)
+        # Short: only lower SL.
+        if pos.sl and candidate >= pos.sl:
+            return None
+        if pos.sl and (pos.sl - candidate) < TRAIL_MIN_STEP_ATR * atr5:
+            return None
+        return candidate
+
+
+def _trailing_sl_tick_sync() -> List[dict]:
+    """Run one trailing-SL evaluation pass. Returns list of actions taken."""
+    actions: List[dict] = []
+    raw = mt5.positions_get() or ()
+    for pos in raw:
+        # Only touch positions we placed (magic) and that have an existing SL.
+        if pos.magic != MAGIC or not pos.sl:
+            continue
+        info = mt5.symbol_info(pos.symbol)
+        if info is None:
+            continue
+        atr5 = _atr_from_rates(pos.symbol, mt5.TIMEFRAME_M5, 14)
+        if atr5 is None:
+            continue
+        new_sl = _trail_target_sl(pos, atr5, info)
+        if new_sl is None:
+            continue
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": pos.ticket,
+            "symbol": pos.symbol,
+            "sl": new_sl,
+            "tp": float(pos.tp),
+            "magic": pos.magic,
+        }
+        result = mt5.order_send(request)
+        ok = result is not None and result.retcode == mt5.TRADE_RETCODE_DONE
+        actions.append({
+            "ticket": pos.ticket,
+            "symbol": pos.symbol,
+            "old_sl": pos.sl,
+            "new_sl": new_sl,
+            "ok": ok,
+            "comment": getattr(result, "comment", "no result") if result else "send-failed",
+        })
+        if ok:
+            log.info("TRAIL %s #%s SL %.5f -> %.5f", pos.symbol, pos.ticket, pos.sl, new_sl)
+        else:
+            log.warning("TRAIL %s #%s rejected: %s", pos.symbol, pos.ticket,
+                        getattr(result, "comment", mt5.last_error()))
+    return actions
+
+
+async def _trailing_sl_loop() -> None:
+    log.info("Trailing-SL loop started (poll=%.1fs, atr_mult=%.1f, min_step=%.2f ATR)",
+             TRAIL_POLL_SECONDS, TRAIL_ATR_MULT, TRAIL_MIN_STEP_ATR)
+    while True:
+        try:
+            await asyncio.to_thread(_trailing_sl_tick_sync)
+        except Exception as e:
+            log.exception("Trailing-SL tick error: %s", e)
+        await asyncio.sleep(TRAIL_POLL_SECONDS)
+
+
 # ---------------------------------------------------------------------------
 # WebSocket: poll MT5 once per second and emit Binance-shaped kline frames
 # ---------------------------------------------------------------------------
@@ -471,10 +632,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--port", type=int, default=PORT, help="Bind port (default 8000)")
     p.add_argument("--enable-trading", action="store_true",
                    help="Allow order placement endpoints (default: read-only)")
+    p.add_argument("--trailing-sl", action="store_true",
+                   help="Run background trailing-SL loop (only on magic=%d positions). "
+                        "Requires --enable-trading." % MAGIC)
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     TRADING_ENABLED = args.enable_trading
+    TRAILING_ENABLED = args.trailing_sl and TRADING_ENABLED
+    if args.trailing_sl and not TRADING_ENABLED:
+        log.warning("--trailing-sl ignored: requires --enable-trading")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
