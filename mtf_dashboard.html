@@ -602,12 +602,8 @@
   </div>
   <div class="header-right">
     <select class="pair-select" id="pairSelect" onchange="changePair()">
-      <option value="BTCUSDT">BTC/USDT</option>
-      <option value="ETHUSDT">ETH/USDT</option>
-      <option value="SOLUSDT">SOL/USDT</option>
-      <option value="BNBUSDT">BNB/USDT</option>
-      <option value="XRPUSDT">XRP/USDT</option>
-      <option value="DOGEUSDT">DOGE/USDT</option>
+      <option value="XAUUSD">XAU/USD</option>
+      <option value="BTCUSD">BTC/USD</option>
     </select>
     <div class="live-badge">
       <div class="live-dot"></div>
@@ -727,7 +723,7 @@
 
   <!-- SIGNAL LOG -->
   <div class="panel log-panel">
-    <div class="panel-title">SIGNAL LOG — BINANCE LIVE</div>
+    <div class="panel-title">SIGNAL LOG — MT5 LIVE</div>
     <div class="log-list" id="logList"></div>
   </div>
 
@@ -735,26 +731,31 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════════
-//  BINANCE LIVE DATA — SPOT PUBLIC API (no key required)
-//  REST:      https://api.binance.com/api/v3/klines   (warm-up history)
-//  WS:        wss://stream.binance.com:9443/ws/<symbol>@kline_<tf>
+//  MT5 LOCAL BRIDGE — same-machine HTTP + WebSocket
+//  REST:  GET  /api/klines?symbol=XAUUSD&interval=1m
+//  WS:    WS   /ws/{symbol}/{interval}
+//  Run mt5_bridge.py first, then open http://localhost:8000/
 // ══════════════════════════════════════════════════════════════════
 
-const TFS = ['1m','5m','15m','1h','4h'];            // Binance interval codes
+// If the dashboard is served by the bridge (recommended), leave BRIDGE_ORIGIN
+// blank to use same-origin requests. Otherwise set e.g. 'http://localhost:8000'.
+const BRIDGE_ORIGIN = '';
+const BRIDGE_HTTP   = BRIDGE_ORIGIN || window.location.origin;
+const BRIDGE_WS     = BRIDGE_HTTP.replace(/^http/, 'ws');
+
+const TFS = ['1m','5m','15m','1h','4h'];            // dashboard interval codes
 const TF_LABEL = { '1m':'1M','5m':'5M','15m':'15M','1h':'1H','4h':'4H' };
 
-const PAIRS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT'];
+const PAIRS = ['XAUUSD','BTCUSD'];
 
 // Per-symbol decimals for display
 function decimalsFor(sym) {
-  if (sym === 'BTCUSDT') return 2;
-  if (sym === 'ETHUSDT' || sym === 'BNBUSDT' || sym === 'SOLUSDT') return 2;
-  if (sym === 'XRPUSDT') return 4;
-  if (sym === 'DOGEUSDT') return 5;
+  if (sym === 'XAUUSD') return 2;
+  if (sym === 'BTCUSD') return 2;
   return 2;
 }
 
-let currentPair = 'BTCUSDT';
+let currentPair = 'XAUUSD';
 let sockets     = {};                 // tf -> WebSocket
 let klines      = {};                 // tf -> array of {o,h,l,c,v,t}
 let rsiValues   = {};                 // tf -> number
@@ -1079,21 +1080,13 @@ function evaluate() {
   updateExit();
 }
 
-// ── BINANCE REST WARMUP
+// ── REST WARMUP (MT5 bridge)
 async function fetchKlines(symbol, interval) {
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${KLINE_LIMIT}`;
+  const url = `${BRIDGE_HTTP}/api/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${KLINE_LIMIT}`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`Binance ${interval} HTTP ${r.status}`);
-  const raw = await r.json();
-  // [ openTime, open, high, low, close, volume, closeTime, ... ]
-  return raw.map(k => ({
-    t: k[0],
-    o: parseFloat(k[1]),
-    h: parseFloat(k[2]),
-    l: parseFloat(k[3]),
-    c: parseFloat(k[4]),
-    v: parseFloat(k[5]),
-  }));
+  if (!r.ok) throw new Error(`Bridge ${interval} HTTP ${r.status}`);
+  // Bridge already returns [{t,o,h,l,c,v}, ...]
+  return await r.json();
 }
 
 async function warmup(symbol) {
@@ -1103,7 +1096,7 @@ async function warmup(symbol) {
     TFS.forEach((tf, i) => { klines[tf] = results[i]; });
     recompute();
     evaluate();
-    document.getElementById('liveBadge').textContent = 'LIVE — BINANCE';
+    document.getElementById('liveBadge').textContent = 'LIVE — MT5';
     addLog(`✅ History loaded (${KLINE_LIMIT} bars × 5 TFs)`, 'info');
   } catch (e) {
     document.getElementById('liveBadge').textContent = 'REST ERROR';
@@ -1111,12 +1104,11 @@ async function warmup(symbol) {
   }
 }
 
-// ── BINANCE WEBSOCKETS (one stream per timeframe)
+// ── WEBSOCKETS (one stream per timeframe, served by bridge)
 function openSockets(symbol) {
   closeSockets();
-  const lower = symbol.toLowerCase();
   TFS.forEach(tf => {
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${lower}@kline_${tf}`);
+    const ws = new WebSocket(`${BRIDGE_WS}/ws/${encodeURIComponent(symbol)}/${tf}`);
     ws.onopen = () => {
       if (tf === '1m') addLog(`🔌 WS connected: ${symbol} @ ${tf}`, 'info');
     };
@@ -1141,8 +1133,7 @@ function openSockets(symbol) {
         arr.push(bar);                       // new bar started
         if (arr.length > KLINE_LIMIT) arr.shift();
       }
-      // Only run heavy recompute on the 1m stream tick (most frequent);
-      // for other TFs, recompute when their bar closes (k.x === true).
+      // Recompute on every 1m tick, and on bar close for higher TFs.
       if (tf === '1m' || k.x) {
         recompute();
         evaluate();
@@ -1153,9 +1144,9 @@ function openSockets(symbol) {
     };
     ws.onclose = () => {
       // Auto-reconnect if we're still on the same pair
-      if (currentPair.toLowerCase() === lower) {
+      if (currentPair === symbol) {
         setTimeout(() => {
-          if (currentPair.toLowerCase() === lower) openSockets(currentPair);
+          if (currentPair === symbol) openSockets(currentPair);
         }, 2500);
       }
     };
