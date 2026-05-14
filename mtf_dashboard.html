@@ -159,7 +159,7 @@
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr 320px;
-    grid-template-rows: auto auto auto auto;
+    grid-template-rows: auto auto auto auto auto;
     gap: 1px;
     background: var(--border);
     min-height: calc(100vh - 73px);
@@ -484,7 +484,7 @@
   /* ── SIGNAL LOG ── */
   .log-panel {
     grid-column: 3;
-    grid-row: 1 / 5;
+    grid-row: 1 / 6;
     display: flex;
     flex-direction: column;
   }
@@ -777,6 +777,99 @@
 
   .trade-readout span { color: var(--text); }
 
+  /* ── SCANNER (multi-symbol heatmap) ── */
+  .scanner-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .scan-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .scan-card:hover {
+    border-color: var(--blue);
+  }
+
+  .scan-card.long {
+    border-color: var(--green);
+    box-shadow: 0 0 12px var(--green-dim);
+  }
+
+  .scan-card.short {
+    border-color: var(--red);
+    box-shadow: 0 0 12px var(--red-dim);
+  }
+
+  .scan-sym {
+    font-family: var(--font-head);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .scan-tfs {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 6px;
+  }
+
+  .scan-tf {
+    flex: 1;
+    height: 18px;
+    border-radius: 3px;
+    background: var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .scan-tf.os { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .scan-tf.ob { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+
+  .scan-status {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--font-head);
+    letter-spacing: 1px;
+  }
+
+  .scan-status.long { color: var(--green); }
+  .scan-status.short { color: var(--red); }
+
+  .scan-price {
+    font-size: 12px;
+    color: var(--text);
+    margin-top: 2px;
+  }
+
+  /* AUTO toggle row (separate from ARM) */
+  .auto-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-top: 8px;
+  }
+  .auto-row.on {
+    border-color: var(--red);
+    box-shadow: 0 0 14px var(--red-dim);
+  }
+  .switch.danger.on { background: var(--red); }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 1100px) {
     .grid { grid-template-columns: 1fr 1fr; }
@@ -800,6 +893,10 @@
     <select class="pair-select" id="pairSelect" onchange="changePair()">
       <option value="XAUUSD">XAU/USD</option>
       <option value="BTCUSD">BTC/USD</option>
+      <option value="EURUSD">EUR/USD</option>
+      <option value="GBPUSD">GBP/USD</option>
+      <option value="USDJPY">USD/JPY</option>
+      <option value="US30">US30</option>
     </select>
     <div class="live-badge">
       <div class="live-dot"></div>
@@ -958,6 +1055,16 @@
       <div class="switch" id="armSwitch" onclick="toggleArm()"></div>
     </div>
 
+    <div class="auto-row" id="autoRow">
+      <div>
+        <div class="arm-label" id="autoLabel">AUTO-EXECUTE OFF</div>
+        <div style="font-size:10px; color:var(--text-dim); margin-top:2px;" id="autoHelp">
+          Requires ARM. Fires only on Tier 1 (4-5/5 TFs). 5 min cooldown per symbol.
+        </div>
+      </div>
+      <div class="switch danger" id="autoSwitch" onclick="toggleAuto()"></div>
+    </div>
+
     <div class="trade-row">
       <div class="trade-input">
         <label>RISK %</label>
@@ -991,6 +1098,14 @@
     </table>
   </div>
 
+  <!-- SCANNER (multi-symbol heatmap, full width) -->
+  <div class="panel full-row" style="grid-row:5">
+    <div class="panel-title">MULTI-SYMBOL SCANNER — TIER 1 ALERTS</div>
+    <div class="scanner-grid" id="scannerGrid">
+      <!-- Injected -->
+    </div>
+  </div>
+
   <!-- SIGNAL LOG -->
   <div class="panel log-panel">
     <div class="panel-title">SIGNAL LOG — MT5 LIVE</div>
@@ -1016,12 +1131,15 @@ const BRIDGE_WS     = BRIDGE_HTTP.replace(/^http/, 'ws');
 const TFS = ['1m','5m','15m','1h','4h'];            // dashboard interval codes
 const TF_LABEL = { '1m':'1M','5m':'5M','15m':'15M','1h':'1H','4h':'4H' };
 
-const PAIRS = ['XAUUSD','BTCUSD'];
+const PAIRS = ['XAUUSD','BTCUSD','EURUSD','GBPUSD','USDJPY','US30'];
 
 // Per-symbol decimals for display
 function decimalsFor(sym) {
   if (sym === 'XAUUSD') return 2;
   if (sym === 'BTCUSD') return 2;
+  if (sym === 'USDJPY') return 3;
+  if (sym === 'US30')   return 1;
+  if (sym && sym.endsWith('USD')) return 5;        // EURUSD, GBPUSD ...
   return 2;
 }
 
@@ -1329,6 +1447,7 @@ function evaluate() {
     lastSignalBar = oneMinBar;
     const dp = decimalsFor(currentPair);
     addLog(`🟢 LONG — ${osCount}/5 TFs oversold. Entry ${entryPrice?.toFixed(dp)}  SL ${stopLoss?.toFixed(dp)}  TP ${takeProfit?.toFixed(dp)}`, 'long');
+    maybeAutoFire('long', osCount);
   } else if (obCount >= 3 && !tradeOpen) {
     updateSignal('short', obCount);
     updateLevels('short');
@@ -1336,6 +1455,7 @@ function evaluate() {
     lastSignalBar = oneMinBar;
     const dp = decimalsFor(currentPair);
     addLog(`🔴 SHORT — ${obCount}/5 TFs overbought. Entry ${entryPrice?.toFixed(dp)}  SL ${stopLoss?.toFixed(dp)}  TP ${takeProfit?.toFixed(dp)}`, 'short');
+    maybeAutoFire('short', obCount);
   } else if (tradeOpen) {
     // keep showing the active direction + dots; just refresh exit monitor
     const activeCount = tradeDir === 'long' ? osCount : obCount;
@@ -1734,8 +1854,229 @@ async function closePosition(ticket) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  AUTO-EXECUTE
+// ══════════════════════════════════════════════════════════════════
+
+let autoOn = false;
+const AUTO_TIER1_THRESHOLD = 4;        // need 4+/5 TFs in agreement
+const AUTO_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes per symbol
+const lastAutoFire = {};                // symbol -> timestamp ms
+
+function toggleAuto() {
+  if (!tradingAllowed) {
+    addLog('⚠ Trading disabled in bridge.', 'exit');
+    return;
+  }
+  autoOn = !autoOn;
+  updateAutoUI();
+  addLog(autoOn ? '🤖 AUTO-EXECUTE armed (Tier 1 only)' : '🤖 AUTO-EXECUTE disarmed', 'exit');
+}
+
+function updateAutoUI() {
+  const row = document.getElementById('autoRow');
+  const sw  = document.getElementById('autoSwitch');
+  const lab = document.getElementById('autoLabel');
+  const help = document.getElementById('autoHelp');
+  if (!tradingAllowed) {
+    row.classList.remove('on');
+    sw.classList.remove('on');
+    lab.textContent = 'AUTO-EXECUTE UNAVAILABLE';
+    help.textContent = 'Bridge running in read-only mode.';
+    autoOn = false;
+    return;
+  }
+  if (autoOn) {
+    row.classList.add('on');
+    sw.classList.add('on');
+    lab.textContent = '🤖 AUTO ON';
+    help.textContent = 'Auto-fires on Tier 1 confluence. ARM also required.';
+  } else {
+    row.classList.remove('on');
+    sw.classList.remove('on');
+    lab.textContent = 'AUTO-EXECUTE OFF';
+    help.textContent = 'Requires ARM. Fires only on Tier 1 (4-5/5 TFs). 5 min cooldown per symbol.';
+  }
+}
+
+/**
+ * Called by evaluate() when a Tier 1 confluence is detected for currentPair.
+ * Returns true if it placed an order.
+ */
+async function maybeAutoFire(direction, count) {
+  if (!autoOn || !armed || !tradingAllowed) return false;
+  if (count < AUTO_TIER1_THRESHOLD) return false;
+  const last = lastAutoFire[currentPair] || 0;
+  if (Date.now() - last < AUTO_COOLDOWN_MS) {
+    addLog(`⏭ Auto-fire skipped (cooldown ${currentPair})`, 'info');
+    return false;
+  }
+  // Skip if there is already an open position for this symbol
+  // (the positions panel polls every 2s, but check the DOM as a soft guard).
+  const posRows = document.querySelectorAll('#posBody tr');
+  for (const row of posRows) {
+    const cells = row.querySelectorAll('td');
+    if (cells.length && cells[0].textContent.trim() === currentPair) {
+      addLog(`⏭ Auto-fire skipped (position already open ${currentPair})`, 'info');
+      return false;
+    }
+  }
+  const lots = parseFloat(document.getElementById('lotSize').value);
+  if (!lots || lots <= 0 || !lastPrice || !atrValues['5m']) return false;
+
+  const dp   = decimalsFor(currentPair);
+  const atr5 = atrValues['5m'];
+  const side = direction === 'long' ? 'BUY' : 'SELL';
+  const sl   = side === 'BUY' ? lastPrice - atr5 * 2.5 : lastPrice + atr5 * 2.5;
+  const tp   = side === 'BUY' ? lastPrice + atr5       : lastPrice - atr5;
+
+  addLog(`🤖 AUTO-FIRE ${side} ${lots.toFixed(2)} ${currentPair} (${count}/5 TFs)`,
+         direction === 'long' ? 'long' : 'short');
+  lastAutoFire[currentPair] = Date.now();
+
+  try {
+    const r = await fetch(`${BRIDGE_HTTP}/api/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbol: currentPair, side, volume: lots,
+        sl: parseFloat(sl.toFixed(dp)),
+        tp: parseFloat(tp.toFixed(dp)),
+        comment: 'kiro-auto',
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      addLog(`❌ Auto-fire rejected: ${j.detail || JSON.stringify(j)}`, 'exit');
+      return false;
+    }
+    addLog(`✅ AUTO ${side} ${lots.toFixed(2)} ${currentPair} filled (deal ${j.deal})`,
+           direction === 'long' ? 'long' : 'short');
+    pollAccount();
+    pollPositions();
+    return true;
+  } catch (e) {
+    addLog(`❌ Auto-fire error: ${e.message}`, 'exit');
+    return false;
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  MULTI-SYMBOL SCANNER
+//  Polls /api/klines for every symbol in PAIRS at the 5 TFs and
+//  computes RSI client-side. Updates the scanner grid and surfaces
+//  any symbol with 3+ TFs aligned. Click a card to switch to that pair.
+// ══════════════════════════════════════════════════════════════════
+
+const SCAN_INTERVAL_MS = 30000;   // re-scan every 30s
+const SCAN_BARS = 80;             // enough for RSI(14) on each TF
+const lastScanAlert = {};         // symbol+dir -> timestamp (de-dupe)
+
+function initScanner() {
+  const grid = document.getElementById('scannerGrid');
+  grid.innerHTML = PAIRS.map(p => `
+    <div class="scan-card" id="scan_${p}" onclick="jumpToPair('${p}')">
+      <div class="scan-sym">${p}</div>
+      <div class="scan-tfs">
+        ${TFS.map(tf => `<div class="scan-tf" id="scan_${p}_${tf}">${TF_LABEL[tf]}</div>`).join('')}
+      </div>
+      <div class="scan-status" id="scanStatus_${p}">— LOADING —</div>
+      <div class="scan-price" id="scanPrice_${p}">—</div>
+    </div>
+  `).join('');
+}
+
+function jumpToPair(sym) {
+  const sel = document.getElementById('pairSelect');
+  if (sel.value === sym) return;
+  sel.value = sym;
+  changePair();
+}
+
+async function scanOne(symbol) {
+  try {
+    // Fetch a small window for each TF in parallel.
+    const results = await Promise.all(TFS.map(tf =>
+      fetch(`${BRIDGE_HTTP}/api/klines?symbol=${encodeURIComponent(symbol)}&interval=${tf}&limit=${SCAN_BARS}`)
+        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+    ));
+    const rsis = {};
+    let osCount = 0, obCount = 0;
+    let lastClose = null;
+    TFS.forEach((tf, i) => {
+      const closes = results[i].map(k => k.c);
+      const rsi = calcRSI(closes, 14);
+      if (rsi == null) return;
+      rsis[tf] = rsi;
+      if (rsi <= 30) osCount++;
+      if (rsi >= 70) obCount++;
+      if (tf === '1m' && closes.length) lastClose = closes[closes.length - 1];
+    });
+
+    // Update DOM
+    const card = document.getElementById(`scan_${symbol}`);
+    if (!card) return;
+    TFS.forEach(tf => {
+      const cell = document.getElementById(`scan_${symbol}_${tf}`);
+      if (!cell) return;
+      const v = rsis[tf];
+      cell.classList.remove('os','ob');
+      if (v != null) {
+        cell.textContent = `${TF_LABEL[tf]} ${v.toFixed(0)}`;
+        if (v <= 30) cell.classList.add('os');
+        else if (v >= 70) cell.classList.add('ob');
+      }
+    });
+    const dp = decimalsFor(symbol);
+    const priceEl = document.getElementById(`scanPrice_${symbol}`);
+    if (lastClose != null && priceEl) priceEl.textContent = lastClose.toFixed(dp);
+
+    const statusEl = document.getElementById(`scanStatus_${symbol}`);
+    card.classList.remove('long','short');
+    statusEl.classList.remove('long','short');
+
+    if (osCount >= 3 && osCount > obCount) {
+      card.classList.add('long');
+      statusEl.classList.add('long');
+      statusEl.textContent = `▲ LONG ${osCount}/5`;
+      maybeScanAlert(symbol, 'long', osCount);
+    } else if (obCount >= 3 && obCount > osCount) {
+      card.classList.add('short');
+      statusEl.classList.add('short');
+      statusEl.textContent = `▼ SHORT ${obCount}/5`;
+      maybeScanAlert(symbol, 'short', obCount);
+    } else {
+      statusEl.textContent = '— NEUTRAL —';
+    }
+  } catch (e) {
+    const statusEl = document.getElementById(`scanStatus_${symbol}`);
+    if (statusEl) statusEl.textContent = '— ERROR —';
+  }
+}
+
+function maybeScanAlert(symbol, dir, count) {
+  // De-dupe: only one log entry per symbol+direction per 5 minutes.
+  const key = `${symbol}_${dir}`;
+  const last = lastScanAlert[key] || 0;
+  if (Date.now() - last < 5 * 60 * 1000) return;
+  lastScanAlert[key] = Date.now();
+  const tier = count >= 4 ? '⭐ Tier 1' : '⚡ Tier 3';
+  addLog(`📡 ${symbol}: ${dir.toUpperCase()} ${count}/5 (${tier})`,
+         dir === 'long' ? 'long' : 'short');
+}
+
+async function scanAll() {
+  // Sequential to avoid hammering the bridge
+  for (const sym of PAIRS) {
+    await scanOne(sym);
+  }
+}
+
+
 // ── BOOT
 initRsiGrid();
+initScanner();
 updateSessions();
 tickClock();
 setInterval(tickClock, 1000);
@@ -1750,6 +2091,10 @@ setInterval(tickClock, 1000);
   setInterval(pollPositions, 2000);
   setInterval(pollHealth,   10000);
   updateArmUI();
+  updateAutoUI();
+  // Run scanner once history is loaded, then on a timer.
+  scanAll();
+  setInterval(scanAll, SCAN_INTERVAL_MS);
 })();
 </script>
 </body>
