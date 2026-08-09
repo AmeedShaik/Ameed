@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KNN vs ANN Backtest — XAUUSD</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #080c18;
+  --panel:    #0d1421;
+  --panel2:   #111827;
+  --border:   #1e3a5f;
+  --border2:  #0f2340;
+  --teal:     #00d4aa;
+  --red:      #ff4444;
+  --amber:    #f59e0b;
+  --blue:     #3b82f6;
+  --purple:   #a78bfa;
+  --text:     #e2e8f0;
+  --dim:      #64748b;
+  --dimmer:   #1e2d40;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;
+  min-height:100vh;
+  padding:10px;
+}
+
+/* ── HEADER ── */
+.header{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 14px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:4px;
+  margin-bottom:7px;
+}
+.h-title{font-size:13px;font-weight:700;color:var(--teal);letter-spacing:1.2px;}
+.h-sub{color:var(--dim);font-size:10px;margin-top:2px;}
+.controls{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-left:auto;}
+.ctrl{display:flex;flex-direction:column;gap:2px;}
+.ctrl label{color:var(--dim);font-size:9px;letter-spacing:.5px;}
+select,input[type=number]{
+  background:var(--bg);border:1px solid var(--border);
+  color:var(--text);font-family:'JetBrains Mono',monospace;
+  font-size:11px;padding:4px 7px;border-radius:3px;
+}
+input[type=number]{width:62px;}
+.btn-run{
+  background:var(--teal);color:#000;border:none;
+  font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+  padding:8px 18px;border-radius:3px;cursor:pointer;letter-spacing:1px;
+  transition:opacity .15s;white-space:nowrap;
+}
+.btn-run:hover{opacity:.85;}
+.btn-run:disabled{opacity:.35;cursor:not-allowed;}
+
+/* ── STATUS ── */
+.status-bar{
+  display:flex;align-items:center;gap:10px;
+  padding:5px 12px;background:var(--panel);
+  border:1px solid var(--border);border-radius:3px;margin-bottom:7px;
+}
+.sdot{width:7px;height:7px;border-radius:50%;background:var(--dim);flex-shrink:0;}
+.sdot.active{background:var(--teal);animation:blink 1s infinite;}
+.sdot.done{background:var(--teal);}
+.sdot.error{background:var(--red);}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+#statusText{color:var(--dim);font-size:10px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pbar{height:2px;background:var(--border2);border-radius:1px;width:120px;flex-shrink:0;overflow:hidden;}
+.pfill{height:100%;background:var(--teal);width:0%;transition:width .25s;}
+
+/* ── SHARED CARD ── */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:7px;}
+.card-header{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:7px 12px;border-bottom:1px solid var(--border);
+}
+.card-label{font-size:10px;font-weight:600;color:var(--dim);letter-spacing:.8px;}
+.legend{display:flex;gap:14px;flex-wrap:wrap;}
+.leg{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--dim);}
+.legdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+canvas{display:block;width:100%;}
+
+/* ── METRICS GRID ── */
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;}
+.mcard{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:12px 14px;}
+.mcard-head{display:flex;align-items:center;gap:8px;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid var(--border);}
+.badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:2px;letter-spacing:1.5px;}
+.badge-knn{background:rgba(0,212,170,.12);color:var(--teal);border:1px solid rgba(0,212,170,.4);}
+.badge-ann{background:rgba(167,139,250,.12);color:var(--purple);border:1px solid rgba(167,139,250,.4);}
+.mcard-sub{font-size:9px;color:var(--dim);}
+.mrows{display:flex;flex-direction:column;gap:7px;}
+.mrow{display:flex;justify-content:space-between;align-items:center;}
+.mname{font-size:10px;color:var(--dim);}
+.mval{font-size:12px;font-weight:600;}
+.pos{color:var(--teal);}
+.neg{color:var(--red);}
+.neu{color:var(--amber);}
+.whi{color:var(--text);}
+.placeholder{display:flex;align-items:center;justify-content:center;height:60px;color:var(--dim);font-size:10px;}
+
+/* ── TRADE LOG ── */
+.tlog-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:10px;}
+th{padding:5px 9px;color:var(--dim);font-weight:500;text-align:left;border-bottom:1px solid var(--border);font-size:9px;letter-spacing:.4px;white-space:nowrap;}
+td{padding:4px 9px;border-bottom:1px solid var(--dimmer);white-space:nowrap;}
+tr:last-child td{border-bottom:none;}
+tr:nth-child(even) td{background:rgba(255,255,255,.015);}
+.tag-knn{color:var(--teal);font-weight:600;}
+.tag-ann{color:var(--purple);font-weight:600;}
+.pnl-p{color:var(--teal);}
+.pnl-n{color:var(--red);}
+.dir-l{color:var(--teal);}
+.dir-s{color:var(--red);}
+
+/* ── OPTIMIZATION ENGINE ── */
+.opt-body{padding:10px 12px;}
+.opt-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+.opt-row input[type=text]{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 7px;border-radius:3px;width:110px;
+}
+.btn-opt{background:var(--purple);color:#000;margin-left:auto;}
+.opt-status{color:var(--dim);font-size:10px;margin:8px 0;line-height:1.5;}
+.opt-best-row td{background:rgba(0,212,170,.08) !important;}
+.btn-apply{
+  background:transparent;border:1px solid var(--teal);color:var(--teal);
+  font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 8px;border-radius:3px;
+  cursor:pointer;letter-spacing:.5px;
+}
+.btn-apply:hover{background:rgba(0,212,170,.12);}
+.mrow.balance{border-top:1px dashed var(--border);padding-top:7px;margin-top:2px;}
+
+/* ── AUTO TRADE ── */
+.at-body{padding:10px 12px;}
+.at-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:9px;}
+.at-row input[type=text],.at-row input[type=number]{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 7px;border-radius:3px;width:90px;
+}
+#atBridgeUrlInput{width:170px;}
+.at-checkbox-ctrl{display:flex;flex-direction:column;gap:2px;}
+.at-checkbox-ctrl label{color:var(--dim);font-size:9px;letter-spacing:.5px;display:flex;align-items:center;gap:5px;cursor:pointer;}
+.btn-at{background:var(--teal);color:#000;border:none;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:8px 18px;border-radius:3px;cursor:pointer;letter-spacing:1px;white-space:nowrap;margin-left:auto;transition:opacity .15s;}
+.btn-at:hover{opacity:.85;}
+.btn-at.at-running{background:var(--red);color:#fff;}
+.at-check-btn{background:transparent;border:1px solid var(--border);color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 10px;border-radius:3px;cursor:pointer;}
+.at-check-btn:hover{color:var(--text);border-color:var(--dim);}
+.at-account-line{font-size:10px;color:var(--dim);margin-bottom:9px;padding:7px 10px;background:var(--bg);border:1px solid var(--border2);border-radius:3px;}
+.at-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;}
+.at-pos-card{background:var(--bg);border:1px solid var(--border2);border-radius:3px;padding:9px 11px;font-size:11px;}
+.at-pos-card .lbl{color:var(--dim);font-size:9px;letter-spacing:.6px;margin-bottom:5px;display:flex;justify-content:space-between;}
+.at-log{height:170px;overflow-y:auto;background:var(--bg);border:1px solid var(--border2);border-radius:3px;padding:7px 10px;font-size:10px;line-height:1.6;}
+.at-log-line{color:var(--dim);white-space:pre-wrap;word-break:break-word;}
+.at-log-line.err{color:var(--red);}
+.at-warn{font-size:9.5px;color:var(--amber);margin-bottom:9px;line-height:1.5;padding:7px 10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:3px;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:600px){
+  .metrics-grid{grid-template-columns:1fr;}
+  .controls{gap:6px;}
+  .pbar{width:60px;}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <div class="h-title">▸ XAUUSD &nbsp;|&nbsp; KNN vs ANN BACKTEST ENGINE</div>
+    <div class="h-sub">MT5 Bridge · VWAP deviation + Volume Profile (POC/VAH/VAL) + OHLCV · N-fold expanding-window walk-forward · cost + ATR-stop modeled</div>
+  </div>
+  <div class="controls">
+    <div class="ctrl"><label>INTERVAL</label>
+      <select id="intervalSel"><option value="1h">1h</option><option value="4h" selected>4h</option><option value="1d">1d</option></select></div>
+    <div class="ctrl"><label>CANDLES</label>
+      <select id="limitSel"><option value="300">300</option><option value="500" selected>500</option><option value="1000">1000</option></select></div>
+    <div class="ctrl"><label>FROM</label>
+      <input type="date" id="fromDate"></div>
+    <div class="ctrl"><label>TO</label>
+      <input type="date" id="toDate"></div>
+    <div class="ctrl"><label>KNN K</label>
+      <input type="number" id="knnK" value="13" min="3" max="25"></div>
+    <div class="ctrl"><label>EPOCHS</label>
+      <input type="number" id="annEpochs" value="200" min="50" max="600"></div>
+    <div class="ctrl"><label>FWD BARS</label>
+      <input type="number" id="fwdBars" value="7" min="1" max="20"></div>
+    <div class="ctrl"><label>THRESHOLD</label>
+      <select id="threshold">
+        <option value="0.001" selected>0.10%</option>
+        <option value="0.0025">0.25%</option>
+        <option value="0.005">0.50%</option>
+      </select></div>
+    <div class="ctrl"><label>FOLDS</label>
+      <select id="folds">
+        <option value="1">1 (70/30)</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+      </select></div>
+    <div class="ctrl"><label>COST/RT</label>
+      <select id="costPct">
+        <option value="0">0.00%</option>
+        <option value="0.0002">0.02%</option>
+        <option value="0.0005" selected>0.05%</option>
+        <option value="0.001">0.10%</option>
+      </select></div>
+    <div class="ctrl"><label>INITIAL BALANCE $</label>
+      <input type="number" id="initBalance" value="500" min="1" max="10000000" step="50"></div>
+    <div class="ctrl"><label>LOT SIZE</label>
+      <input type="number" id="lotSize" value="0.10" min="0.01" max="100" step="0.01"></div>
+    <div class="ctrl"><label>CONTRACT/LOT</label>
+      <input type="number" id="contractSize" value="100" min="1" max="100000" step="1"></div>
+    <div class="ctrl"><label>SL/TP MODE</label>
+      <select id="slTpMode" onchange="toggleSlTpMode()">
+        <option value="atr" selected>ATR ×</option>
+        <option value="fixed">Fixed $</option>
+      </select></div>
+    <div class="ctrl" id="stopAtrWrap"><label>STOP ATR×</label>
+      <input type="number" id="stopAtr" value="2" min="0" max="10" step="0.25"></div>
+    <div class="ctrl" id="tpAtrWrap"><label>TP ATR×</label>
+      <input type="number" id="tpAtr" value="3" min="0" max="20" step="0.25"></div>
+    <div class="ctrl" id="slFixedWrap" style="display:none"><label>SL $</label>
+      <input type="number" id="slFixed" value="5.00" min="0" max="500" step="0.5"></div>
+    <div class="ctrl" id="tpFixedWrap" style="display:none"><label>TP $</label>
+      <input type="number" id="tpFixed" value="10.00" min="0" max="1000" step="0.5"></div>
+    <button class="btn-run" id="runBtn" onclick="runBacktest()">▶ RUN</button>
+  </div>
+</div>
+
+<script>
+function toggleSlTpMode(){
+  const atrMode = document.getElementById('slTpMode').value === 'atr';
+  document.getElementById('stopAtrWrap').style.display = atrMode ? '' : 'none';
+  document.getElementById('tpAtrWrap').style.display   = atrMode ? '' : 'none';
+  document.getElementById('slFixedWrap').style.display = atrMode ? 'none' : '';
+  document.getElementById('tpFixedWrap').style.display = atrMode ? 'none' : '';
+}
+</script>
+
+<!-- OPTIMIZATION ENGINE -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-label">OPTIMIZATION ENGINE — GRID SEARCH OVER WALK-FORWARD FOLDS</span>
+  </div>
+  <div class="opt-body">
+    <div class="opt-row">
+      <div class="ctrl"><label>KNN K LIST</label>
+        <input type="text" id="optK" value="5,7,9,11"></div>
+      <div class="ctrl"><label>FWD BARS LIST</label>
+        <input type="text" id="optFwd" value="3,5,8"></div>
+      <div class="ctrl"><label>THRESHOLD LIST %</label>
+        <input type="text" id="optThresh" value="0.10,0.25,0.50"></div>
+      <div class="ctrl"><label>STOP ATR× LIST</label>
+        <input type="text" id="optStop" value="1,1.5,2"></div>
+      <div class="ctrl"><label>TP ATR× LIST</label>
+        <input type="text" id="optTp" value="2,3,4"></div>
+      <div class="ctrl"><label>SEARCH EPOCHS (FAST)</label>
+        <input type="number" id="optEpochs" value="60" min="10" max="600"></div>
+      <div class="ctrl"><label>OPTIMIZE TARGET</label>
+        <select id="optTarget">
+          <option value="knn">KNN</option>
+          <option value="ann" selected>ANN</option>
+          <option value="both">Both (avg)</option>
+        </select></div>
+      <div class="ctrl"><label>OBJECTIVE</label>
+        <select id="optObjective">
+          <option value="sharpe" selected>Sharpe Ratio</option>
+          <option value="ret">Total Return %</option>
+          <option value="usd">Net PnL $</option>
+          <option value="calmar">Return / Drawdown</option>
+          <option value="wr">Win Rate %</option>
+        </select></div>
+      <div class="ctrl"><label>MAX COMBOS</label>
+        <input type="number" id="optMaxCombos" value="80" min="1" max="400"></div>
+      <button class="btn-run btn-opt" id="optBtn" onclick="runOptimization()">⚙ OPTIMIZE</button>
+    </div>
+    <div class="opt-status" id="optStatus">Configure ranges above, then run. Grid search reuses your current INTERVAL/CANDLES/FOLDS/COST settings; ANN trains with the faster "search epochs" count during search only.</div>
+    <div class="tlog-wrap"><div id="optResults"><div class="placeholder">— no optimization run yet —</div></div></div>
+  </div>
+</div>
+
+<!-- STATUS -->
+<div class="status-bar">
+  <div class="sdot" id="sdot"></div>
+  <span id="statusText">Ready — configure parameters and click RUN</span>
+  <div class="pbar"><div class="pfill" id="pfill"></div></div>
+</div>
+
+<!-- PRICE CHART -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-label">PRICE CHART + SIGNALS</span>
+    <div class="legend">
+      <div class="leg"><div class="legdot" style="background:var(--teal)"></div>KNN BUY</div>
+      <div class="leg"><div class="legdot" style="background:#ff6b6b"></div>KNN SELL</div>
+      <div class="leg"><div class="legdot" style="background:var(--purple)"></div>ANN BUY</div>
+      <div class="leg"><div class="legdot" style="background:var(--amber)"></div>ANN SELL</div>
+      <div class="leg"><div class="legdot" style="background:var(--blue)"></div>VWAP(24)</div>
+      <div class="leg"><div class="legdot" style="background:rgba(245,158,11,.5)"></div>POC</div>
+    </div>
+  </div>
+  <canvas id="priceChart" height="380"></canvas>
+</div>
+
+<!-- METRICS SIDE BY SIDE -->
+<div class="metrics-grid">
+  <div class="mcard">
+    <div class="mcard-head">
+      <span class="badge badge-knn">KNN</span>
+      <span class="mcard-sub" id="knnCfg">K=13 · 7 features · Euclidean distance</span>
+    </div>
+    <div class="mrows" id="knnMetrics"><div class="placeholder">— run backtest —</div></div>
+  </div>
+  <div class="mcard">
+    <div class="mcard-head">
+      <span class="badge badge-ann">ANN</span>
+      <span class="mcard-sub" id="annCfg">7→12→3 · ReLU + Softmax · SGD+momentum</span>
+    </div>
+    <div class="mrows" id="annMetrics"><div class="placeholder">— run backtest —</div></div>
+  </div>
+</div>
+
+<!-- EQUITY CURVE -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-label">EQUITY CURVE — TEST PERIOD</span>
+    <div class="legend">
+      <div class="leg"><div class="legdot" style="background:var(--teal)"></div>KNN</div>
+      <div class="leg"><div class="legdot" style="background:var(--purple)"></div>ANN</div>
+    </div>
+  </div>
+  <canvas id="equityChart" height="175"></canvas>
+</div>
+
+<!-- TRADE LOG -->
+<div class="card">
+  <div class="card-header"><span class="card-label">TRADE LOG — LAST 30 PER MODEL (TEST SET)</span></div>
+  <div class="tlog-wrap">
+    <div id="tradeLog"><div class="placeholder">— no trades yet —</div></div>
+  </div>
+</div>
+
+<!-- AUTO TRADE -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-label">AUTO TRADE — LIVE SIGNAL EXECUTION VIA MT5 BRIDGE</span>
+  </div>
+  <div class="at-body">
+    <div class="at-warn">
+      Requires <code>mt5_trade_bridge.py</code> running (not the read-only chart bridge — it needs the
+      /account /positions /order /close /tick endpoints). KNN and ANN trade as two independently tagged
+      positions (magic 990101 / 990102), retrained live on a schedule using the K / FWD BARS / THRESHOLD /
+      STOP ATR× / TP ATR× / LOT SIZE values set in the controls above. DRY RUN is on by default — it logs
+      every decision without sending orders.
+    </div>
+
+    <div class="at-row">
+      <div class="ctrl"><label>BRIDGE URL</label>
+        <input type="text" id="atBridgeUrlInput" value="http://localhost:7000"></div>
+      <button class="at-check-btn" onclick="atFetchAccount()">CHECK CONNECTION</button>
+      <div class="ctrl"><label>POLL SECONDS</label>
+        <input type="number" id="atPollSeconds" value="30" min="5" max="600"></div>
+      <div class="ctrl"><label>RETRAIN EVERY N BARS</label>
+        <input type="number" id="atRetrainEvery" value="30" min="1" max="500"></div>
+      <div class="ctrl"><label>LIVE RETRAIN EPOCHS</label>
+        <input type="number" id="atLiveEpochs" value="100" min="10" max="600"></div>
+      <div class="ctrl"><label>HISTORY BARS</label>
+        <input type="number" id="atHistoryBars" value="500" min="100" max="2000"></div>
+      <div class="at-checkbox-ctrl"><label><input type="checkbox" id="atDryRun" checked> DRY RUN (log only, no orders)</label></div>
+      <button class="btn-at" id="atToggleBtn" onclick="atToggleEnable()">▶ ENABLE AUTO TRADE</button>
+    </div>
+
+    <div class="at-account-line" id="atAccountLine">Not connected — click CHECK CONNECTION.</div>
+
+    <div class="at-status-grid">
+      <div class="at-pos-card">
+        <div class="lbl"><span>KNN_LIVE · magic 990101</span><span id="atLastSignals" style="color:var(--dim)"></span></div>
+        <div id="atKnnPos"><span style="color:var(--dim)">FLAT</span></div>
+      </div>
+      <div class="at-pos-card">
+        <div class="lbl"><span>ANN_LIVE · magic 990102</span></div>
+        <div id="atAnnPos"><span style="color:var(--dim)">FLAT</span></div>
+      </div>
+    </div>
+
+    <div class="at-log" id="atLog"><div class="at-log-line">— auto trade not started —</div></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════
+const $ = id => document.getElementById(id);
+const setStatus = (msg, state='active') => {
+  $('statusText').textContent = msg;
+  $('sdot').className = 'sdot ' + state;
+};
+const setProgress = pct => { $('pfill').style.width = pct + '%'; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ═══════════════════════════════════════
+// MT5 BRIDGE API  (was: Binance)
+// ═══════════════════════════════════════
+const MT5_BRIDGE_URL = 'http://localhost:7000';   // <-- change if your bridge runs elsewhere
+
+// Binance-style "1h/4h/1d" -> MT5 bridge "H1/H4/D1"
+const INTERVAL_TO_MT5_TF = { '1h': 'H1', '4h': 'H4', '1d': 'D1' };
+
+async function fetchKlines(symbol, interval, limit, fromDate=null, toDate=null, baseUrl=MT5_BRIDGE_URL) {
+  const tf = INTERVAL_TO_MT5_TF[interval] || interval.toUpperCase();
+  let url;
+  if (fromDate && toDate) {
+    // MT5 bridge /history supports ISO from/to and returns every bar in range (count is ignored)
+    url = `${baseUrl}/history?symbol=${symbol}&tf=${tf}&from=${fromDate}T00:00:00&to=${toDate}T23:59:59`;
+  } else {
+    url = `${baseUrl}/history?symbol=${symbol}&tf=${tf}&count=${limit}`;
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`MT5 bridge HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(`MT5 bridge error: ${data.error} (${data.detail || ''})`);
+  return data.bars.map(k => ({
+    time:   +k.time,
+    open:   +k.open,  high:  +k.high,
+    low:    +k.low,   close: +k.close,
+    volume: +k.volume,
+    tp:     (+k.high + +k.low + +k.close) / 3
+  }));
+}
+
+// ═══════════════════════════════════════
+// FEATURE COMPUTATION
+// ═══════════════════════════════════════
+function vwap(candles, idx, period) {
+  const s = Math.max(0, idx - period + 1);
+  let tpv = 0, v = 0;
+  for (let i = s; i <= idx; i++) { tpv += candles[i].tp * candles[i].volume; v += candles[i].volume; }
+  return v > 0 ? tpv / v : candles[idx].close;
+}
+
+function volumeProfile(candles, idx, lookback=50, bins=20) {
+  const s = Math.max(0, idx - lookback + 1);
+  const w = candles.slice(s, idx + 1);
+  const lo = Math.min(...w.map(c => c.low));
+  const hi = Math.max(...w.map(c => c.high));
+  if (hi <= lo) return { poc: candles[idx].close, vah: candles[idx].high, val: candles[idx].low };
+  const bs = (hi - lo) / bins;
+  const vb = new Array(bins).fill(0);
+  w.forEach(c => {
+    const bl = Math.max(0, Math.floor((c.low  - lo) / bs));
+    const bh = Math.min(bins - 1, Math.floor((c.high - lo) / bs));
+    const sp = bh - bl + 1;
+    for (let b = bl; b <= bh; b++) vb[b] += c.volume / sp;
+  });
+  const pocBin = vb.indexOf(Math.max(...vb));
+  const poc = lo + (pocBin + 0.5) * bs;
+  // value area: expand outward from POC until 70% of volume captured
+  const total = vb.reduce((a,b)=>a+b,0);
+  let cum = vb[pocBin], up = pocBin, dn = pocBin;
+  while (cum < total * 0.7) {
+    const uv = up + 1 < bins ? vb[up+1] : -Infinity;
+    const dv = dn - 1 >= 0   ? vb[dn-1] : -Infinity;
+    if (uv === -Infinity && dv === -Infinity) break;
+    if (uv >= dv) { up++; cum += vb[up]; } else { dn--; cum += vb[dn]; }
+  }
+  return { poc, vah: lo + (up + 1) * bs, val: lo + dn * bs };
+}
+
+function avgVol(candles, idx, period=20) {
+  const s = Math.max(0, idx - period + 1);
+  let sum = 0;
+  for (let i = s; i <= idx; i++) sum += candles[i].volume;
+  return sum / (idx - s + 1);
+}
+
+// True Range / ATR — used for the stop-loss distance in the backtest engine.
+// Only looks backward from idx, so it's safe to precompute once over the whole series.
+function buildATRSeries(candles, period=14) {
+  const tr = new Array(candles.length).fill(0);
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    if (i === 0) { tr[i] = c.high - c.low; continue; }
+    const pc = candles[i-1].close;
+    tr[i] = Math.max(c.high - c.low, Math.abs(c.high - pc), Math.abs(c.low - pc));
+  }
+  const atr = new Array(candles.length).fill(0);
+  for (let i = 0; i < candles.length; i++) {
+    const s = Math.max(0, i - period + 1);
+    let sum = 0;
+    for (let j = s; j <= i; j++) sum += tr[j];
+    atr[i] = sum / (i - s + 1);
+  }
+  return atr;
+}
+
+function buildDataset(candles, fwd=5, thresh=0.0025) {
+  const warmup = 50;
+  const features = [], labels = [], meta = [];
+
+  for (let i = warmup; i < candles.length - fwd; i++) {
+    const c = candles[i];
+    const vw  = vwap(candles, i, 24);
+    const { poc, vah, val } = volumeProfile(candles, i, 50, 20);
+    const av = avgVol(candles, i, 20);
+
+    features.push([
+      (c.close - vw)  / (vw  || 1),   // VWAP deviation
+      (c.close - poc) / (poc || 1),   // POC deviation
+      (c.close - vah) / (vah || 1),   // VAH deviation
+      (c.close - val) / (val || 1),   // VAL deviation
+      (c.close - c.open) / (c.open || 1),     // candle body return
+      (c.high  - c.low)  / (c.close  || 1),   // HL range normalised
+      av > 0 ? c.volume / av : 1              // relative volume
+    ]);
+
+    const fut = (candles[i + fwd].close - c.close) / c.close;
+    labels.push(fut > thresh ? 2 : fut < -thresh ? 0 : 1); // 2=BUY 1=HOLD 0=SELL
+
+    meta.push({ i, vw, poc, vah, val });
+  }
+  return { features, labels, meta, warmup, fwd };
+}
+
+function minMaxNorm(trainX, testX) {
+  const n = trainX[0].length;
+  const mn = new Array(n).fill(Infinity), mx = new Array(n).fill(-Infinity);
+  trainX.forEach(x => x.forEach((v,j) => { if(v<mn[j])mn[j]=v; if(v>mx[j])mx[j]=v; }));
+  const norm = x => x.map((v,j) => { const r=mx[j]-mn[j]; return r>0?(v-mn[j])/r:0; });
+  return { trainXN: trainX.map(norm), testXN: testX.map(norm) };
+}
+
+// Generic min-max fit/apply (single dataset, applied later to fresh vectors) — used by
+// the live auto-trade model, which trains once on the full history rather than per-fold.
+function minMaxFit(X){
+  const n = X[0].length;
+  const mn = new Array(n).fill(Infinity), mx = new Array(n).fill(-Infinity);
+  X.forEach(x => x.forEach((v,j) => { if(v<mn[j])mn[j]=v; if(v>mx[j])mx[j]=v; }));
+  return { mn, mx };
+}
+function minMaxApplyOne(x, mn, mx){
+  return x.map((v,j) => { const r=mx[j]-mn[j]; const val = r>0?(v-mn[j])/r:0; return Math.min(1,Math.max(0,val)); });
+}
+
+// Feature vector for a single bar (the most recently CLOSED bar in live trading) —
+// identical math to the loop body inside buildDataset(), factored out for reuse.
+function buildLiveFeature(candles, idx){
+  const c = candles[idx];
+  const vw = vwap(candles, idx, 24);
+  const { poc, vah, val } = volumeProfile(candles, idx, 50, 20);
+  const av = avgVol(candles, idx, 20);
+  return [
+    (c.close - vw)  / (vw  || 1),
+    (c.close - poc) / (poc || 1),
+    (c.close - vah) / (vah || 1),
+    (c.close - val) / (val || 1),
+    (c.close - c.open) / (c.open || 1),
+    (c.high  - c.low)  / (c.close  || 1),
+    av > 0 ? c.volume / av : 1
+  ];
+}
+
+// ═══════════════════════════════════════
+// KNN
+// ═══════════════════════════════════════
+function euclid(a, b) {
+  let s = 0; for (let i=0;i<a.length;i++) s+=(a[i]-b[i])**2; return Math.sqrt(s);
+}
+class KNN {
+  constructor(k) { this.k = k; }
+  fit(X, y) { this.X = X; this.y = y; }
+  predict(x) {
+    const d = this.X.map((xi,i) => ({ d: euclid(x,xi), l: this.y[i] }));
+    d.sort((a,b)=>a.d-b.d);
+    const v = [0,0,0];
+    d.slice(0, this.k).forEach(n => v[n.l]++);
+    return v.indexOf(Math.max(...v));
+  }
+}
+
+// ═══════════════════════════════════════
+// ANN  (7 → 12 → 3)
+// ═══════════════════════════════════════
+class ANN {
+  constructor(lr=0.01, mom=0.85) {
+    this.lr = lr; this.mom = mom;
+    const r = (rows,cols,fin) => {
+      const s = Math.sqrt(2/fin);
+      return Array.from({length:rows},()=>Array.from({length:cols},()=>(Math.random()*2-1)*s));
+    };
+    const z = (rows,cols) => Array.from({length:rows},()=>new Array(cols).fill(0));
+    this.W1=r(12,7,7);  this.b1=new Array(12).fill(0);
+    this.W2=r(3,12,12); this.b2=new Array(3).fill(0);
+    this.vW1=z(12,7); this.vb1=new Array(12).fill(0);
+    this.vW2=z(3,12); this.vb2=new Array(3).fill(0);
+  }
+  relu(v){ return v>0?v:0; }
+  reluD(v){ return v>0?1:0; }
+  softmax(a){ const m=Math.max(...a),e=a.map(v=>Math.exp(Math.min(v-m,500))),s=e.reduce((x,y)=>x+y,0); return e.map(v=>v/s); }
+
+  forward(x) {
+    this.z1 = this.W1.map((row,i) => row.reduce((s,w,j)=>s+w*x[j],0) + this.b1[i]);
+    this.a1 = this.z1.map(v=>this.relu(v));
+    this.z2 = this.W2.map((row,i) => row.reduce((s,w,j)=>s+w*this.a1[j],0) + this.b2[i]);
+    this.a2 = this.softmax(this.z2);
+    return this.a2;
+  }
+  backward(x, yTrue) {
+    const d2 = this.a2.map((v,i) => v - (i===yTrue?1:0));
+    const d1 = this.a1.map((_,j) => d2.reduce((s,d,i)=>s+d*this.W2[i][j],0) * this.reluD(this.z1[j]));
+    for(let i=0;i<3;i++){
+      for(let j=0;j<12;j++){
+        this.vW2[i][j]=this.mom*this.vW2[i][j]-this.lr*d2[i]*this.a1[j];
+        this.W2[i][j]+=this.vW2[i][j];
+      }
+      this.vb2[i]=this.mom*this.vb2[i]-this.lr*d2[i];
+      this.b2[i]+=this.vb2[i];
+    }
+    for(let i=0;i<12;i++){
+      for(let j=0;j<7;j++){
+        this.vW1[i][j]=this.mom*this.vW1[i][j]-this.lr*d1[i]*x[j];
+        this.W1[i][j]+=this.vW1[i][j];
+      }
+      this.vb1[i]=this.mom*this.vb1[i]-this.lr*d1[i];
+      this.b1[i]+=this.vb1[i];
+    }
+  }
+  predict(x){ const p=this.forward(x); return p.indexOf(Math.max(...p)); }
+}
+
+// ═══════════════════════════════════════
+// BACKTEST ENGINE
+// ═══════════════════════════════════════
+const sig2dir = l => l===2?1:l===0?-1:0;
+
+// costPct  : round-trip transaction cost as a fraction of price (spread+commission), e.g. 0.0005 = 0.05%
+// risk     : { atr, mode:'atr'|'fixed', slAtrMult, tpAtrMult, slFixed, tpFixed, lotSize, contractSize }
+//            mode 'atr'   -> stop/TP distance = mult * ATR(14) at entry bar
+//            mode 'fixed' -> stop/TP distance = a fixed $ price distance you set on the dashboard
+// cumStart : equity (%) carries over from this value — chains walk-forward folds into one continuous curve
+function backtest(candles, testStart, signals, fwdBars, costPct=0, risk={}, cumStart=0) {
+  const { atr=null, mode='atr', slAtrMult=0, tpAtrMult=0, slFixed=0, tpFixed=0,
+          lotSize=0.1, contractSize=100 } = risk;
+  let pos=0, ep=0, epAbs=-1, cum=cumStart, stopPrice=null, tpPrice=null;
+  const trades=[], equity=[cum];
+
+  const closeTrade = (absIdx, price, reason) => {
+    const grossPnl = (price-ep)/ep*pos*100;
+    const pnl = grossPnl - costPct*100; // subtract full round-trip cost, in %
+    // dollar P/L at the configured lot size (contractSize units per 1.0 lot)
+    const notionalUnits = lotSize*contractSize;
+    const pnlUsd = (price-ep)*pos*notionalUnits - costPct*ep*notionalUnits;
+    cum += pnl;
+    trades.push({ entry:epAbs, exit:absIdx, ep, xp:price, pnl, pnlUsd, dir:pos>0?'LONG':'SHORT', reason });
+    equity.push(cum);
+    pos=0; stopPrice=null; tpPrice=null;
+  };
+
+  for(let i=0;i<signals.length;i++){
+    const absIdx = testStart + i;
+    if(absIdx >= candles.length) break;
+    const bar   = candles[absIdx];
+    const price = bar.close;
+    const sig   = signals[i];
+
+    const tradesBefore = trades.length;
+
+    // 1) intrabar stop-loss check first (conservative — assumes worst-case fill if both SL & TP could hit same bar)
+    if(pos!==0 && stopPrice!==null){
+      const stopHit = pos>0 ? bar.low <= stopPrice : bar.high >= stopPrice;
+      if(stopHit) closeTrade(absIdx, stopPrice, 'STOP');
+    }
+    // 2) intrabar take-profit check
+    if(pos!==0 && tpPrice!==null){
+      const tpHit = pos>0 ? bar.high >= tpPrice : bar.low <= tpPrice;
+      if(tpHit) closeTrade(absIdx, tpPrice, 'TP');
+    }
+
+    // 3) open new position
+    if(pos===0 && sig!==0){
+      pos=sig; ep=price; epAbs=absIdx;
+      if (mode==='fixed') {
+        stopPrice = slFixed>0 ? (pos>0 ? ep-slFixed : ep+slFixed) : null;
+        tpPrice   = tpFixed>0 ? (pos>0 ? ep+tpFixed : ep-tpFixed) : null;
+      } else {
+        const a = (atr ? atr[absIdx] : 0);
+        stopPrice = (slAtrMult>0 && atr) ? (pos>0 ? ep - slAtrMult*a : ep + slAtrMult*a) : null;
+        tpPrice   = (tpAtrMult>0 && atr) ? (pos>0 ? ep + tpAtrMult*a : ep - tpAtrMult*a) : null;
+      }
+    }
+
+    // closeTrade() already pushes an equity point when it fires; otherwise record the flat/unrealized point once per bar
+    if(trades.length === tradesBefore) equity.push(cum);
+  }
+  // flush open position at last available close
+  if(pos!==0){
+    const lastIdx = Math.min(testStart+signals.length-1, candles.length-1);
+    closeTrade(lastIdx, candles[lastIdx].close, 'EOD');
+  }
+  return { trades, equity, cumEnd: cum };
+}
+
+// tradesPerYear: annualization factor derived from actual bar frequency + test length,
+// not a fixed 252 — a 1h-bar 5-bar-hold strategy trades far more often than 252/yr.
+function metrics(trades, equity, tradesPerYear=252) {
+  if(!trades.length) return { wr:0, ret:0, dd:0, sharpe:0, n:0, avg:0, usd:0 };
+  const wins = trades.filter(t=>t.pnl>0).length;
+  const ret  = trades.reduce((s,t)=>s+t.pnl,0);
+  const usd  = trades.reduce((s,t)=>s+t.pnlUsd,0);
+  let peak=-Infinity, dd=0;
+  equity.forEach(e=>{ if(e>peak)peak=e; const d=peak-e; if(d>dd)dd=d; });
+  const mean = ret/trades.length;
+  const std  = Math.sqrt(trades.reduce((s,t)=>s+(t.pnl-mean)**2,0)/trades.length);
+  const sharpe = std>0?(mean/std)*Math.sqrt(tradesPerYear):0;
+  return { wr:wins/trades.length*100, ret, dd, sharpe, n:trades.length, avg:ret/trades.length, usd };
+}
+
+// ═══════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════
+let GS = null;
+
+function drawPriceChart(candles, foldStarts, knnSigMap, annSigMap, metaMap){
+  const cv = $('priceChart');
+  cv.width  = cv.parentElement.clientWidth;
+  const W=cv.width, H=cv.height;
+  const ctx = cv.getContext('2d');
+  const pad = {t:18,b:28,l:62,r:14};
+  const cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+
+  // show last N candles
+  const maxCan = Math.max(40, Math.floor(cW/5));
+  const sIdx   = Math.max(0, candles.length-maxCan);
+  const slice  = candles.slice(sIdx);
+  const lo     = Math.min(...slice.map(c=>c.low));
+  const hi     = Math.max(...slice.map(c=>c.high));
+  const range  = hi-lo || 1;
+  const xS     = cW/slice.length;
+  const toX    = i => pad.l + (i+.5)*xS;
+  const toY    = p => pad.t + cH - (p-lo)/range*cH;
+
+  ctx.fillStyle='#080c18';
+  ctx.fillRect(0,0,W,H);
+
+  // grid
+  for(let i=0;i<=5;i++){
+    const y=pad.t+(cH/5)*i;
+    ctx.strokeStyle='#1e3a5f'; ctx.lineWidth=.5;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+    const p=hi-(range/5)*i;
+    ctx.fillStyle='#64748b'; ctx.font='9px JetBrains Mono'; ctx.textAlign='right';
+    ctx.fillText(p.toFixed(1), pad.l-4, y+3);
+  }
+  // x-axis time labels
+  ctx.font='8px JetBrains Mono'; ctx.fillStyle='#64748b'; ctx.textAlign='center';
+  const step=Math.max(1,Math.floor(slice.length/6));
+  for(let i=0;i<slice.length;i+=step){
+    const d=new Date(slice[i].time);
+    const lbl=`${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}h`;
+    ctx.fillText(lbl, toX(i), pad.t+cH+12);
+  }
+
+  // VWAP line
+  ctx.beginPath(); ctx.strokeStyle='#3b82f6'; ctx.lineWidth=1.2;
+  let fp=true;
+  slice.forEach((_,ii)=>{
+    const m=metaMap.get(sIdx+ii);
+    if(!m){fp=true;return;}
+    const x=toX(ii),y=toY(m.vw);
+    fp?(ctx.moveTo(x,y),fp=false):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // POC dashes
+  ctx.setLineDash([3,4]); ctx.lineWidth=.8;
+  slice.forEach((_,ii)=>{
+    const m=metaMap.get(sIdx+ii); if(!m)return;
+    ctx.strokeStyle='rgba(245,158,11,.45)';
+    const y=toY(m.poc);
+    ctx.beginPath(); ctx.moveTo(toX(ii)-xS*.4,y); ctx.lineTo(toX(ii)+xS*.4,y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Candles
+  slice.forEach((c,ii)=>{
+    const x=toX(ii), cw=Math.max(xS*.65,1);
+    const up=c.close>=c.open;
+    const col=up?'#00d4aa':'#ff4444';
+    ctx.strokeStyle=col; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,toY(c.high)); ctx.lineTo(x,toY(c.low)); ctx.stroke();
+    const by=toY(Math.max(c.open,c.close)), bh=Math.max(toY(Math.min(c.open,c.close))-by,1);
+    ctx.fillStyle=col; ctx.fillRect(x-cw/2,by,cw,bh);
+  });
+
+  // Fold boundaries (each walk-forward fold's train→test cut)
+  foldStarts.forEach((testStart, fi) => {
+    const sepOff = testStart - sIdx;
+    if(sepOff>=0 && sepOff<slice.length){
+      const sx=toX(sepOff);
+      ctx.strokeStyle='rgba(245,158,11,.7)'; ctx.lineWidth=1.5;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(sx,pad.t); ctx.lineTo(sx,pad.t+cH); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='rgba(245,158,11,.85)'; ctx.font='9px JetBrains Mono'; ctx.textAlign='left';
+      ctx.fillText(`F${fi+1} TEST ▶`, sx+3, pad.t+11+((fi%2)*10));
+    }
+  });
+
+  // Signal triangles
+  const tri=(x,y,up,col,off)=>{
+    ctx.fillStyle=col;
+    ctx.beginPath();
+    if(up){ ctx.moveTo(x+off,y-7); ctx.lineTo(x+off+5,y+1); ctx.lineTo(x+off-5,y+1); }
+    else  { ctx.moveTo(x+off,y+7); ctx.lineTo(x+off+5,y-1); ctx.lineTo(x+off-5,y-1); }
+    ctx.closePath(); ctx.fill();
+  };
+
+  knnSigMap && knnSigMap.forEach((s, absIdx)=>{
+    if(s===0)return;
+    const ci=absIdx-sIdx;
+    if(ci<0||ci>=slice.length)return;
+    const x=toX(ci), price=candles[absIdx].close;
+    const y=toY(price)+(s>0?13:-13);
+    tri(x,y,s>0,'#00d4aa',0);
+  });
+  annSigMap && annSigMap.forEach((s, absIdx)=>{
+    if(s===0)return;
+    const ci=absIdx-sIdx;
+    if(ci<0||ci>=slice.length)return;
+    const x=toX(ci), price=candles[absIdx].close;
+    const y=toY(price)+(s>0?22:-22);
+    tri(x,y,s>0, s>0?'#a78bfa':'#f59e0b', 3);
+  });
+}
+
+function drawEquityChart(knnEq, annEq){
+  const cv=$('equityChart');
+  cv.width=cv.parentElement.clientWidth;
+  const W=cv.width,H=cv.height;
+  const ctx=cv.getContext('2d');
+  const pad={t:14,b:22,l:58,r:14};
+  const cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
+  ctx.fillStyle='#080c18';ctx.fillRect(0,0,W,H);
+  const all=[...knnEq,...annEq,0];
+  const lo=Math.min(...all),hi=Math.max(...all),range=hi-lo||1;
+  const toY=v=>pad.t+cH-(v-lo)/range*cH;
+  // grid
+  for(let i=0;i<=4;i++){
+    const y=pad.t+(cH/4)*i;
+    ctx.strokeStyle='#1e3a5f';ctx.lineWidth=.5;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+    const v=hi-(range/4)*i;
+    ctx.fillStyle='#64748b';ctx.font='9px JetBrains Mono';ctx.textAlign='right';
+    ctx.fillText((v>=0?'+':'')+v.toFixed(2)+'%',pad.l-4,y+3);
+  }
+  // zero
+  const zy=toY(0);
+  ctx.strokeStyle='rgba(100,116,139,.4)';ctx.lineWidth=1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,zy);ctx.lineTo(W-pad.r,zy);ctx.stroke();
+  ctx.setLineDash([]);
+
+  const drawLine=(eq,stroke,fill)=>{
+    if(eq.length<2)return;
+    const step=cW/(eq.length-1);
+    ctx.beginPath();ctx.strokeStyle=stroke;ctx.lineWidth=1.5;
+    eq.forEach((v,i)=>{const x=pad.l+i*step,y=toY(v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    ctx.stroke();
+    ctx.beginPath();
+    eq.forEach((v,i)=>{const x=pad.l+i*step,y=toY(v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    const lx=pad.l+(eq.length-1)*step;
+    ctx.lineTo(lx,toY(0));ctx.lineTo(pad.l,toY(0));ctx.closePath();
+    ctx.fillStyle=fill;ctx.fill();
+  };
+  drawLine(knnEq,'#00d4aa','rgba(0,212,170,.07)');
+  drawLine(annEq,'#a78bfa','rgba(167,139,250,.07)');
+}
+
+function renderMetrics(elId, m, initBalance=500){
+  const fmt=(v,d=2)=>isNaN(v)?'—':v.toFixed(d);
+  const finalBal = initBalance + (m.usd||0);
+  $(elId).innerHTML=`
+    <div class="mrow"><span class="mname">WIN RATE</span>
+      <span class="mval ${m.wr>=50?'pos':'neg'}">${fmt(m.wr,1)}%</span></div>
+    <div class="mrow"><span class="mname">TOTAL RETURN</span>
+      <span class="mval ${m.ret>=0?'pos':'neg'}">${m.ret>=0?'+':''}${fmt(m.ret)}%</span></div>
+    <div class="mrow"><span class="mname">MAX DRAWDOWN</span>
+      <span class="mval neg">-${fmt(m.dd)}%</span></div>
+    <div class="mrow"><span class="mname">SHARPE RATIO</span>
+      <span class="mval ${m.sharpe>=1?'pos':m.sharpe>=0?'neu':'neg'}">${fmt(m.sharpe)}</span></div>
+    <div class="mrow"><span class="mname">TOTAL TRADES</span>
+      <span class="mval whi">${m.n}</span></div>
+    <div class="mrow"><span class="mname">AVG PnL / TRADE</span>
+      <span class="mval ${m.avg>=0?'pos':'neg'}">${m.avg>=0?'+':''}${fmt(m.avg)}%</span></div>
+    <div class="mrow balance"><span class="mname">INITIAL BALANCE</span>
+      <span class="mval whi">$${fmt(initBalance,2)}</span></div>
+    <div class="mrow"><span class="mname">NET PnL $</span>
+      <span class="mval ${m.usd>=0?'pos':'neg'}">${m.usd>=0?'+':''}$${fmt(m.usd,2)}</span></div>
+    <div class="mrow"><span class="mname">FINAL BALANCE</span>
+      <span class="mval ${finalBal>=initBalance?'pos':'neg'}">$${fmt(finalBal,2)}</span></div>
+  `;
+}
+
+function renderTradeLog(knnTrades, annTrades, candles){
+  const knn=knnTrades.slice(-30).map(t=>({...t,model:'KNN'}));
+  const ann=annTrades.slice(-30).map(t=>({...t,model:'ANN'}));
+  const rows=[...knn,...ann].sort((a,b)=>a.entry-b.entry).slice(-60);
+  const ft=ts=>{ const d=new Date(ts); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; };
+  $('tradeLog').innerHTML=`<table>
+    <thead><tr>
+      <th>MODEL</th><th>DIR</th><th>ENTRY</th><th>ENTRY $</th>
+      <th>EXIT</th><th>EXIT $</th><th>PnL %</th><th>RESULT</th>
+    </tr></thead>
+    <tbody>${rows.map(t=>`<tr>
+      <td class="tag-${t.model.toLowerCase()}">${t.model}</td>
+      <td class="${t.dir==='LONG'?'dir-l':'dir-s'}">${t.dir}</td>
+      <td style="color:var(--dim)">${candles[t.entry]?ft(candles[t.entry].time):'—'}</td>
+      <td>${t.ep.toFixed(2)}</td>
+      <td style="color:var(--dim)">${candles[t.exit]?ft(candles[t.exit].time):'—'}</td>
+      <td>${t.xp.toFixed(2)}</td>
+      <td class="${t.pnl>=0?'pnl-p':'pnl-n'}">${t.pnl>=0?'+':''}${t.pnl.toFixed(3)}%</td>
+      <td style="color:${t.pnl>=0?'var(--teal)':'var(--red)'}">${t.pnl>=0?'✓ WIN':'✗ LOSS'}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+// ═══════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════
+const BARS_PER_YEAR = { '1h': 8760, '4h': 2190, '1d': 365 };
+
+// Reads the SL/TP + position-sizing controls into the risk object the
+// backtest() engine expects. Fixes a prior bug where these were never
+// actually wired through (backtest() was being called with mismatched args,
+// so SL/TP and lot/contract size were silently ignored).
+function getRiskParams(overrides={}){
+  const mode = $('slTpMode').value; // 'atr' | 'fixed'
+  return {
+    mode,
+    slAtrMult:    overrides.slAtrMult    ?? (+$('stopAtr').value  || 0),
+    tpAtrMult:    overrides.tpAtrMult    ?? (+$('tpAtr').value    || 0),
+    slFixed:      overrides.slFixed      ?? (+$('slFixed').value  || 0),
+    tpFixed:      overrides.tpFixed      ?? (+$('tpFixed').value  || 0),
+    lotSize:      +$('lotSize').value      || 0.1,
+    contractSize: +$('contractSize').value || 100,
+  };
+}
+
+// Core engine: build dataset → expanding-window walk-forward folds → train
+// KNN+ANN per fold → backtest → metrics. Fully parameterized (no DOM reads
+// except through the optional progressCb), so it's reused by both the main
+// RUN button and the optimizer's grid search.
+async function computeFolds(candles, atrSeries, p, progressCb=null){
+  const { K, epochs, fwd, threshFrac, nFolds, costPct, risk, barsPerYear } = p;
+
+  const { features, labels, meta, warmup } = buildDataset(candles, fwd, threshFrac);
+  const metaMap = new Map(meta.map(m=>[m.i,m]));
+
+  const N = features.length;
+  const initTrainLen = Math.max(30, Math.floor(N * 0.4));
+  const testPoolLen  = N - initTrainLen;
+  const foldLen = Math.floor(testPoolLen / nFolds);
+
+  const knnSigMap = new Map(), annSigMap = new Map();
+  let kTrades=[], aTrades=[], kEquity=[0], aEquity=[0], kCum=0, aCum=0;
+  const foldStarts = [];
+  let totalTestBars = 0;
+
+  for (let f = 0; f < nFolds; f++) {
+    const trainLen  = initTrainLen + f*foldLen;
+    const isLast    = f === nFolds-1;
+    const testLen   = isLast ? (testPoolLen - foldLen*(nFolds-1)) : foldLen;
+    if (testLen <= 0) continue;
+
+    const trainX = features.slice(0, trainLen), trainY = labels.slice(0, trainLen);
+    const testX  = features.slice(trainLen, trainLen+testLen);
+    const testStart = warmup + trainLen;
+    foldStarts.push(testStart);
+    totalTestBars += testLen;
+
+    const { trainXN, testXN } = minMaxNorm(trainX, testX);
+
+    if (progressCb) await progressCb(`Fold ${f+1}/${nFolds}: training KNN on ${trainX.length} samples…`, f/nFolds);
+    const knn = new KNN(K);
+    knn.fit(trainXN, trainY);
+    const knnSigs = testXN.map(x=>sig2dir(knn.predict(x)));
+    knnSigs.forEach((s,si)=>knnSigMap.set(testStart+si, s));
+
+    if (progressCb) await progressCb(`Fold ${f+1}/${nFolds}: training ANN (${epochs} epochs) on ${trainX.length} samples…`, f/nFolds);
+    const ann = new ANN(0.01, 0.85);
+    const chunks = 10, epPC = Math.ceil(epochs/chunks);
+    for(let c=0;c<chunks;c++){
+      const s=c*epPC, e=Math.min(s+epPC,epochs);
+      for(let ep=s;ep<e;ep++){
+        const idx=Array.from({length:trainXN.length},(_,i)=>i);
+        for(let i=idx.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+        idx.forEach(i=>{ ann.forward(trainXN[i]); ann.backward(trainXN[i],trainY[i]); });
+      }
+      if (progressCb) await sleep(1);
+    }
+    const annSigs = testXN.map(x=>sig2dir(ann.predict(x)));
+    annSigs.forEach((s,si)=>annSigMap.set(testStart+si, s));
+
+    // Backtest this fold, chaining equity from where the previous fold left off.
+    // risk carries atr as the precomputed ATR series (mode 'atr' uses it for SL/TP distance).
+    const kR = backtest(candles, testStart, knnSigs, fwd, costPct, { ...risk, atr: atrSeries }, kCum);
+    const aR = backtest(candles, testStart, annSigs, fwd, costPct, { ...risk, atr: atrSeries }, aCum);
+    kTrades = kTrades.concat(kR.trades); aTrades = aTrades.concat(aR.trades);
+    kEquity = kEquity.concat(kR.equity.slice(1)); aEquity = aEquity.concat(aR.equity.slice(1));
+    kCum = kR.cumEnd; aCum = aR.cumEnd;
+  }
+
+  const kTPY = totalTestBars>0 ? (kTrades.length/totalTestBars)*barsPerYear : 0;
+  const aTPY = totalTestBars>0 ? (aTrades.length/totalTestBars)*barsPerYear : 0;
+  const kM = metrics(kTrades, kEquity, kTPY);
+  const aM = metrics(aTrades, aEquity, aTPY);
+
+  return { kTrades, aTrades, kEquity, aEquity, kM, aM, foldStarts, knnSigMap, annSigMap, metaMap, totalTestBars };
+}
+
+async function runBacktest(){
+  const btn=$('runBtn');
+  btn.disabled=true;
+  setProgress(0);
+  try{
+    const interval  = $('intervalSel').value;
+    const limit     = +$('limitSel').value;
+    const K         = +$('knnK').value     || 7;
+    const epochs    = +$('annEpochs').value|| 200;
+    const fwd       = +$('fwdBars').value  || 5;
+    const threshFrac= +$('threshold').value|| 0.0025;
+    const nFolds    = +$('folds').value    || 4;
+    const costPct   = +$('costPct').value  || 0;
+    const risk      = getRiskParams();
+    const initBalance = +$('initBalance').value || 500;
+
+    $('knnCfg').textContent = `K=${K} · 7 features · Euclidean distance`;
+    $('annCfg').textContent = `7→12→3 · ReLU+Softmax · ${epochs} epochs`;
+
+    // 1. Fetch
+    setStatus(`Fetching XAUUSD ${interval} from MT5 bridge (${limit} candles)…`,'active');
+    setProgress(5); await sleep(40);
+    const candles = await fetchKlines('XAUUSD', interval, limit);
+    setProgress(10);
+    setStatus(`Loaded ${candles.length} candles · Computing features + ATR…`,'active');
+    await sleep(40);
+
+    // 2. ATR (only ever looks backward, safe to precompute once)
+    const atrSeries = buildATRSeries(candles, 14);
+    setProgress(18);
+
+    // 3. Expanding-window walk-forward folds — train KNN+ANN, backtest each.
+    const barsPerYear = BARS_PER_YEAR[interval] || 2190;
+    const progressCb = async (msg, frac) => { setStatus(msg,'active'); setProgress(18 + frac*60); };
+    const R = await computeFolds(candles, atrSeries,
+      { K, epochs, fwd, threshFrac, nFolds, costPct, risk, barsPerYear }, progressCb);
+    setProgress(78);
+
+    // 4. Render
+    setStatus('Rendering…','active'); await sleep(20);
+    drawPriceChart(candles, R.foldStarts, R.knnSigMap, R.annSigMap, R.metaMap);
+    renderMetrics('knnMetrics', R.kM, initBalance);
+    renderMetrics('annMetrics', R.aM, initBalance);
+    drawEquityChart(R.kEquity, R.aEquity);
+    renderTradeLog(R.kTrades, R.aTrades, candles);
+
+    setProgress(100);
+    const kFinal = initBalance + R.kM.usd, aFinal = initBalance + R.aM.usd;
+    setStatus(
+      `✓ Done · ${nFolds}-fold walk-forward, ${R.totalTestBars} test bars · cost ${(costPct*100).toFixed(2)}%/RT · `+
+      `${risk.mode==='atr' ? `stop ${risk.slAtrMult}×/tp ${risk.tpAtrMult}×ATR` : `stop $${risk.slFixed}/tp $${risk.tpFixed}`} · `+
+      `KNN ${R.kM.n}T ${R.kM.wr.toFixed(1)}%WR Sharpe ${R.kM.sharpe.toFixed(2)} bal $${kFinal.toFixed(2)} · `+
+      `ANN ${R.aM.n}T ${R.aM.wr.toFixed(1)}%WR Sharpe ${R.aM.sharpe.toFixed(2)} bal $${aFinal.toFixed(2)}`,
+      'done'
+    );
+    GS = { candles, foldStarts: R.foldStarts, knnSigMap: R.knnSigMap, annSigMap: R.annSigMap,
+           metaMap: R.metaMap, kEquity: R.kEquity, aEquity: R.aEquity };
+
+  } catch(err){
+    setStatus('Error: '+err.message, 'error');
+    console.error(err);
+  }
+  btn.disabled=false;
+}
+
+// ═══════════════════════════════════════
+// OPTIMIZATION ENGINE — grid search over the walk-forward pipeline
+// ═══════════════════════════════════════
+const parseList = (str, isInt=false) =>
+  str.split(',').map(s=>s.trim()).filter(Boolean).map(s=>isInt?parseInt(s,10):parseFloat(s)).filter(v=>!isNaN(v));
+
+function scoreFor(m, objective){
+  switch(objective){
+    case 'ret':    return m.ret;
+    case 'usd':    return m.usd;
+    case 'calmar': return m.dd>0 ? m.ret/m.dd : m.ret;
+    case 'wr':     return m.wr;
+    case 'sharpe':
+    default:       return m.sharpe;
+  }
+}
+
+let OPT_RESULTS = [];
+
+async function runOptimization(){
+  const btn = $('optBtn');
+  btn.disabled = true;
+  try{
+    const Ks      = parseList($('optK').value, true);
+    const fwds    = parseList($('optFwd').value, true);
+    const threshs = parseList($('optThresh').value).map(v=>v/100);   // "0.25" -> 0.0025
+    const stops   = parseList($('optStop').value);
+    const tps     = parseList($('optTp').value);
+    const searchEpochs = +$('optEpochs').value || 60;
+    const target  = $('optTarget').value;      // knn | ann | both
+    const objective = $('optObjective').value;
+    const maxCombos = +$('optMaxCombos').value || 80;
+
+    if (!Ks.length||!fwds.length||!threshs.length||!stops.length||!tps.length){
+      $('optStatus').textContent = 'Every list needs at least one valid comma-separated number.';
+      btn.disabled = false; return;
+    }
+
+    const combos = [];
+    for (const K of Ks) for (const fwd of fwds) for (const threshFrac of threshs)
+      for (const slAtrMult of stops) for (const tpAtrMult of tps)
+        combos.push({ K, fwd, threshFrac, slAtrMult, tpAtrMult });
+
+    if (combos.length > maxCombos){
+      $('optStatus').textContent =
+        `${combos.length} combinations exceeds MAX COMBOS (${maxCombos}). Narrow your lists or raise the cap.`;
+      btn.disabled = false; return;
+    }
+
+    const interval  = $('intervalSel').value;
+    const limit     = +$('limitSel').value;
+    const nFolds    = +$('folds').value || 4;
+    const costPct   = +$('costPct').value || 0;
+    const baseRisk  = getRiskParams();
+    const barsPerYear = BARS_PER_YEAR[interval] || 2190;
+
+    $('optStatus').textContent = `Fetching candles for ${combos.length} combinations…`;
+    setProgress(5);
+    const candles = await fetchKlines('XAUUSD', interval, limit);
+    const atrSeries = buildATRSeries(candles, 14);
+
+    OPT_RESULTS = [];
+    for (let i = 0; i < combos.length; i++){
+      const c = combos[i];
+      $('optStatus').textContent = `Testing combo ${i+1}/${combos.length} — K=${c.K} FWD=${c.fwd} THRESH=${(c.threshFrac*100).toFixed(2)}% STOP=${c.slAtrMult}× TP=${c.tpAtrMult}×`;
+      setProgress(5 + (i/combos.length)*90);
+      await sleep(0); // yield to UI thread so the status bar actually updates
+
+      const risk = { ...baseRisk, mode:'atr', slAtrMult: c.slAtrMult, tpAtrMult: c.tpAtrMult };
+      const R = await computeFolds(candles, atrSeries,
+        { K: c.K, epochs: searchEpochs, fwd: c.fwd, threshFrac: c.threshFrac, nFolds, costPct, risk, barsPerYear },
+        null); // no progressCb during search — keeps it fast
+
+      const kScore = scoreFor(R.kM, objective), aScore = scoreFor(R.aM, objective);
+      const score = target==='knn' ? kScore : target==='ann' ? aScore : (kScore+aScore)/2;
+      OPT_RESULTS.push({ ...c, kM: R.kM, aM: R.aM, score });
+    }
+
+    OPT_RESULTS.sort((a,b)=>b.score-a.score);
+    renderOptResults(OPT_RESULTS, target, objective);
+    setProgress(100);
+    $('optStatus').textContent = `✓ Done — ${combos.length} combos tested (search epochs=${searchEpochs}). Top result highlighted below; click APPLY to load its parameters and rerun the full backtest.`;
+
+  } catch(err){
+    $('optStatus').textContent = 'Error: ' + err.message;
+    console.error(err);
+  }
+  btn.disabled = false;
+}
+
+function renderOptResults(results, target, objective){
+  const fmt=(v,d=2)=>isNaN(v)?'—':v.toFixed(d);
+  const top = results.slice(0, 25);
+  $('optResults').innerHTML = `<table>
+    <thead><tr>
+      <th>#</th><th>K</th><th>FWD</th><th>THRESH</th><th>STOP×</th><th>TP×</th>
+      <th>KNN WR/RET/SHP</th><th>ANN WR/RET/SHP</th><th>SCORE (${objective}, ${target})</th><th></th>
+    </tr></thead>
+    <tbody>${top.map((r,i)=>`<tr class="${i===0?'opt-best-row':''}">
+      <td>${i+1}</td><td>${r.K}</td><td>${r.fwd}</td><td>${(r.threshFrac*100).toFixed(2)}%</td>
+      <td>${r.slAtrMult}</td><td>${r.tpAtrMult}</td>
+      <td>${fmt(r.kM.wr,0)}% / ${fmt(r.kM.ret,1)}% / ${fmt(r.kM.sharpe,2)}</td>
+      <td>${fmt(r.aM.wr,0)}% / ${fmt(r.aM.ret,1)}% / ${fmt(r.aM.sharpe,2)}</td>
+      <td class="${r.score>=0?'pnl-p':'pnl-n'}">${fmt(r.score,3)}</td>
+      <td><button class="btn-apply" onclick="applyOptCombo(${i})">APPLY</button></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function applyOptCombo(rank){
+  const top = OPT_RESULTS.slice(0,25);
+  const r = top[rank];
+  if (!r) return;
+  $('knnK').value = r.K;
+  $('fwdBars').value = r.fwd;
+  $('stopAtr').value = r.slAtrMult;
+  $('tpAtr').value = r.tpAtrMult;
+  $('slTpMode').value = 'atr';
+  toggleSlTpMode();
+  // match threshold to the closest existing <option> so the visible select stays valid
+  const sel = $('threshold');
+  let best = sel.options[0].value, bestDiff = Infinity;
+  for (const opt of sel.options){
+    const diff = Math.abs(parseFloat(opt.value) - r.threshFrac);
+    if (diff < bestDiff){ bestDiff = diff; best = opt.value; }
+  }
+  sel.value = best;
+  runBacktest();
+}
+
+window.addEventListener('resize',()=>{
+  if(!GS) return;
+  drawPriceChart(GS.candles,GS.foldStarts,GS.knnSigMap,GS.annSigMap,GS.metaMap);
+  drawEquityChart(GS.kEquity,GS.aEquity);
+});
+
+// ═══════════════════════════════════════
+// AUTO TRADE — live signal execution via the trading-capable MT5 bridge
+// (mt5_trade_bridge.py). Ports the same KNN+ANN pipeline used above, but
+// trains once on ALL available history (not walk-forward folds) and runs
+// on a poll loop, matching mt5_auto_trader.py's Python daemon 1:1 so the
+// browser and the headless daemon make identical decisions.
+// ═══════════════════════════════════════
+const KNN_MAGIC = 990101, ANN_MAGIC = 990102;
+const KNN_TAG = 'KNN_LIVE', ANN_TAG = 'ANN_LIVE';
+
+const AT_STATE = { running:false, timer:null, knn:null, ann:null, mn:null, mx:null,
+                    lastBarTime:null, barsSinceRetrain:0 };
+
+const atBridgeUrl = () => ($('atBridgeUrlInput').value || MT5_BRIDGE_URL).replace(/\/$/,'');
+
+function atLog(msg, cls=''){
+  const el = $('atLog');
+  if (el.firstChild && el.firstChild.textContent === '— auto trade not started —') el.innerHTML = '';
+  const line = document.createElement('div');
+  line.className = 'at-log-line' + (cls ? ` ${cls}` : '');
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.prepend(line);
+  while (el.children.length > 150) el.removeChild(el.lastChild);
+}
+
+async function atFetchAccount(){
+  try{
+    const res = await fetch(`${atBridgeUrl()}/account`);
+    const a = await res.json();
+    if (!res.ok || a.error){
+      $('atAccountLine').innerHTML = `<span class="neg">Bridge/account error: ${a.detail||a.error||res.status}</span>`;
+      return null;
+    }
+    $('atAccountLine').innerHTML =
+      `Login ${a.login} · ${a.server} · <span class="${a.mode==='DEMO'?'pos':'neg'}">${a.mode}</span> · `+
+      `Balance $${a.balance.toFixed(2)} · Equity $${a.equity.toFixed(2)} · `+
+      `Trading ${a.trading_allowed ? '<span class="pos">allowed</span>' : '<span class="neg">blocked by bridge</span>'}`;
+    return a;
+  }catch(e){
+    $('atAccountLine').innerHTML = `<span class="neg">Cannot reach bridge at ${atBridgeUrl()} — ${e.message}</span>`;
+    return null;
+  }
+}
+
+async function atOpenPosition(tag, magic, signal, atrVal){
+  const url = atBridgeUrl();
+  const dryRun = $('atDryRun').checked;
+  const stopMult = +$('stopAtr').value || 0;
+  const tpMult   = +$('tpAtr').value   || 0;
+  const lot      = +$('lotSize').value || 0.1;
+
+  let price;
+  try{
+    const tRes = await fetch(`${url}/tick?symbol=XAUUSD`);
+    const t = await tRes.json();
+    if (!tRes.ok || t.error) throw new Error(t.detail || t.error || 'no tick');
+    price = signal > 0 ? t.ask : t.bid;
+  }catch(e){
+    atLog(`${tag}: tick fetch failed, aborting open (${e.message})`, 'err');
+    return;
+  }
+  const sl = stopMult>0 ? (signal>0 ? price-stopMult*atrVal : price+stopMult*atrVal) : 0;
+  const tp = tpMult>0   ? (signal>0 ? price+tpMult*atrVal   : price-tpMult*atrVal)   : 0;
+
+  atLog(`${tag}: ${signal>0?'BUY':'SELL'} ${lot} lots @ ~${price.toFixed(2)} `+
+        `SL=${sl?sl.toFixed(2):'—'} TP=${tp?tp.toFixed(2):'—'} (ATR=${atrVal.toFixed(2)})`);
+
+  if (dryRun){ atLog(`${tag}: DRY RUN — order not sent.`); return; }
+
+  try{
+    const res = await fetch(`${url}/order`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ symbol:'XAUUSD', volume:lot, type: signal>0?'BUY':'SELL', sl, tp, magic, comment: tag })
+    });
+    const data = await res.json();
+    if (!res.ok){ atLog(`${tag}: order FAILED — ${data.detail||data.error}`, 'err'); return; }
+    atLog(`${tag}: order filled, ticket=${data.ticket} @ ${data.price.toFixed(2)}`);
+  }catch(e){
+    atLog(`${tag}: order request error — ${e.message}`, 'err');
+  }
+}
+
+// Open/hold logic applied to a real position. Exits are left entirely to the
+// broker-side SL/TP, since the time-based and signal-flip exits have been
+// removed.
+async function atManageModel(tag, magic, signal, atrVal){
+  const url = atBridgeUrl();
+  let positions;
+  try{
+    const res = await fetch(`${url}/positions?symbol=XAUUSD&magic=${magic}`);
+    positions = await res.json();
+  }catch(e){
+    atLog(`${tag}: could not fetch positions — ${e.message}`, 'err');
+    return;
+  }
+  const pos = Array.isArray(positions) ? positions[0] : null;
+
+  if (pos){
+    atLog(`${tag}: holding ticket ${pos.ticket}`);
+  } else if (signal !== 0){
+    await atOpenPosition(tag, magic, signal, atrVal);
+  }
+}
+
+function atPosHtml(p){
+  if (!p) return `<span style="color:var(--dim)">FLAT</span>`;
+  return `<span class="${p.type==='BUY'?'dir-l':'dir-s'}">${p.type}</span> `+
+         `#${p.ticket} @ ${p.price_open.toFixed(2)} SL ${p.sl?p.sl.toFixed(2):'—'} TP ${p.tp?p.tp.toFixed(2):'—'} `+
+         `<span class="${p.profit>=0?'pnl-p':'pnl-n'}">${p.profit>=0?'+':''}$${p.profit.toFixed(2)}</span>`;
+}
+
+async function atRefreshPositions(){
+  const url = atBridgeUrl();
+  try{
+    const [kRes, aRes] = await Promise.all([
+      fetch(`${url}/positions?symbol=XAUUSD&magic=${KNN_MAGIC}`),
+      fetch(`${url}/positions?symbol=XAUUSD&magic=${ANN_MAGIC}`)
+    ]);
+    const kPos = (await kRes.json())[0], aPos = (await aRes.json())[0];
+    $('atKnnPos').innerHTML = atPosHtml(kPos);
+    $('atAnnPos').innerHTML = atPosHtml(aPos);
+  }catch(e){ /* connection status already surfaced via atAccountLine */ }
+}
+
+// Trains a live KNN + ANN on ALL available history (not walk-forward folds — every
+// bar is fair game once you're not scoring out-of-sample performance), same as
+// mt5_auto_trader.py's train_models(). Chunked with yields so the tab stays responsive.
+async function atTrainLive(candles){
+  const K       = +$('knnK').value || 7;
+  const epochs  = +$('atLiveEpochs').value || 100;
+  const fwd     = +$('fwdBars').value || 5;
+  const threshFrac = +$('threshold').value || 0.0025;
+
+  const { features, labels } = buildDataset(candles, fwd, threshFrac);
+  const { mn, mx } = minMaxFit(features);
+  const Xn = features.map(x => minMaxApplyOne(x, mn, mx));
+
+  const knn = new KNN(K);
+  knn.fit(Xn, labels);
+
+  const ann = new ANN(0.01, 0.85);
+  const chunks = 10, epPC = Math.ceil(epochs/chunks);
+  for (let c = 0; c < chunks; c++){
+    const s = c*epPC, e = Math.min(s+epPC, epochs);
+    for (let ep = s; ep < e; ep++){
+      const idx = Array.from({length:Xn.length}, (_,i)=>i);
+      for (let i = idx.length-1; i>0; i--){ const j = Math.floor(Math.random()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+      idx.forEach(i => { ann.forward(Xn[i]); ann.backward(Xn[i], labels[i]); });
+    }
+    await sleep(1);
+  }
+
+  AT_STATE.knn = knn; AT_STATE.ann = ann; AT_STATE.mn = mn; AT_STATE.mx = mx;
+  atLog(`Retrained live models on ${Xn.length} samples (K=${K}, epochs=${epochs}, `+
+        `class balance BUY/HOLD/SELL = ${[2,1,0].map(l=>labels.filter(v=>v===l).length).join('/')})`);
+}
+
+async function atCycle(){
+  try{
+    const interval = $('intervalSel').value;
+    const limit = +$('atHistoryBars').value || 500;
+    const candles = await fetchKlines('XAUUSD', interval, limit, null, null, atBridgeUrl());
+    const lastIdx = candles.length - 1;
+    const lastTime = candles[lastIdx].time;
+
+    if (AT_STATE.lastBarTime === lastTime){
+      return; // no new closed bar yet — stay quiet, don't spam the log every poll
+    }
+    AT_STATE.lastBarTime = lastTime;
+    AT_STATE.barsSinceRetrain++;
+    atLog(`New closed bar: ${new Date(lastTime).toLocaleString()}`);
+
+    const retrainEvery = +$('atRetrainEvery').value || 30;
+    if (!AT_STATE.knn || AT_STATE.barsSinceRetrain >= retrainEvery){
+      await atTrainLive(candles);
+      AT_STATE.barsSinceRetrain = 0;
+    }
+
+    const atrSeries = buildATRSeries(candles, 14);
+    const atrNow = atrSeries[lastIdx];
+    const feat = buildLiveFeature(candles, lastIdx);
+    const featN = minMaxApplyOne(feat, AT_STATE.mn, AT_STATE.mx);
+    const knnSig = sig2dir(AT_STATE.knn.predict(featN));
+    const annSig = sig2dir(AT_STATE.ann.predict(featN));
+
+    const dirTxt = s => s>0?'BUY':s<0?'SELL':'HOLD';
+    atLog(`Signals — KNN=${dirTxt(knnSig)}  ANN=${dirTxt(annSig)}  ATR=${atrNow.toFixed(2)}  close=${candles[lastIdx].close.toFixed(2)}`);
+    $('atLastSignals').textContent = `KNN:${dirTxt(knnSig)}  ANN:${dirTxt(annSig)}`;
+
+    await atManageModel(KNN_TAG, KNN_MAGIC, knnSig, atrNow);
+    await atManageModel(ANN_TAG, ANN_MAGIC, annSig, atrNow);
+    await atRefreshPositions();
+
+  }catch(err){
+    atLog('ERROR: ' + err.message, 'err');
+  }
+}
+
+function atStop(){
+  clearInterval(AT_STATE.timer);
+  AT_STATE.running = false;
+  $('atToggleBtn').textContent = '▶ ENABLE AUTO TRADE';
+  $('atToggleBtn').classList.remove('at-running');
+  atLog('Auto trade DISABLED.');
+}
+
+async function atToggleEnable(){
+  if (AT_STATE.running){ atStop(); return; }
+
+  const dryRun = $('atDryRun').checked;
+  const acc = await atFetchAccount();
+  if (!acc){ atLog('Cannot start — bridge/account unreachable.', 'err'); return; }
+
+  if (!dryRun){
+    if (acc.mode !== 'DEMO'){
+      const typed = prompt(
+        `⚠ This account is ${acc.mode}, not DEMO, and DRY RUN is off.\n`+
+        `Type EXACTLY "TRADE LIVE" to confirm real orders on a real-money account:`
+      );
+      if (typed !== 'TRADE LIVE'){ atLog('Live start aborted — confirmation text did not match.', 'err'); return; }
+    } else {
+      const typed = prompt(
+        `⚠ DRY RUN is off. This will send real orders to your DEMO account (login ${acc.login}).\n`+
+        `Type "CONFIRM" to proceed:`
+      );
+      if (typed !== 'CONFIRM'){ atLog('Start aborted — confirmation text did not match.', 'err'); return; }
+    }
+  }
+
+  AT_STATE.running = true;
+  AT_STATE.barsSinceRetrain = 999999; // force a retrain on the very first cycle
+  $('atToggleBtn').textContent = '■ STOP AUTO TRADE';
+  $('atToggleBtn').classList.add('at-running');
+  atLog(`Auto trade ENABLED — ${dryRun?'DRY RUN':'LIVE ORDERS'} · poll every ${$('atPollSeconds').value}s · retrain every ${$('atRetrainEvery').value} bars`);
+
+  await atCycle();
+  const pollMs = Math.max(5, +$('atPollSeconds').value || 30) * 1000;
+  AT_STATE.timer = setInterval(atCycle, pollMs);
+}
+
+</script>
+</body>
+</html>
